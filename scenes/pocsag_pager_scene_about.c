@@ -16,17 +16,16 @@ void pocsag_pager_scene_about_widget_callback(GuiButtonType result, InputType ty
  * once would otherwise cost about a kilobyte of RAM the whole time the app
  * runs. tools/export_about.py publishes the file beside the built .fap.
  *
- * Without it the screen still names who the app is built on and where to find
- * the rest, so attribution never depends on a file being copied.
+ * Without it the screen gives the repository, which carries the credits.
  */
 #define PCSG_ABOUT_PATH EXT_PATH("pager/flipper_pager.txt")
 #define PCSG_ABOUT_MAX_SIZE 4096U
 
 static const char pcsg_about_fallback[] =
-    "Developed by @xMasterX &\n@Shmuma, @htotoo, @Geofferey,\n"
-    "on multimon-ng and Mayhem\nFLEX. Icons by @Svaarich.\n\n"
-    "flipper_pager.txt was not found in\n/ext/pager/\n\nFull credits and docs:\n"
-    "github.com/Geofferey/\nFlipper-Momentum-Apps\n/tree/flex/pocsag_pager\n";
+    // The scroll element will not break a long token, so split the url.
+    "https://github.com/\n"
+    "Geofferey/flipper-pager\n"
+    "/tree/flex\n";
 
 // Append the file's contents, or false if it could not be read whole.
 static bool pocsag_pager_scene_about_load(FuriString* out) {
