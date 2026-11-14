@@ -29,10 +29,10 @@
 // timestamped file; used to tune clock recovery against real signals.
 // On the SD card next to the logs. Captures run until the session ends or the
 // cap (~3.8 MB at 25.6 kHz) is reached.
-#define FLEX_CAPTURE_DIR      EXT_PATH("pocsag/captures")
+#define FLEX_CAPTURE_DIR      EXT_PATH("pager/captures")
 #define FLEX_CAPTURE_WINDOW_S 600U
 #define FLEX_CAPTURE_CHUNK    512U
-#define FLEX_STATS_PATH       EXT_PATH("pocsag/stats.txt")
+#define FLEX_STATS_PATH       EXT_PATH("pager/stats.txt")
 #define FLEX_STATS_FILE_INTERVAL_MS 30000U
 
 typedef struct {
@@ -56,7 +56,7 @@ typedef struct {
 static void flex_capture_open(FlexCapture* capture) {
     memset(capture, 0, sizeof(FlexCapture));
     capture->storage = furi_record_open(RECORD_STORAGE);
-    storage_simply_mkdir(capture->storage, EXT_PATH("pocsag"));
+    storage_simply_mkdir(capture->storage, EXT_PATH("pager"));
     storage_simply_mkdir(capture->storage, FLEX_CAPTURE_DIR);
 
     DateTime dt;
@@ -145,7 +145,7 @@ struct FlexSampler {
     volatile bool sound_gate;
     // Record the raw sample stream this session (see flex_sampler_set_capture).
     bool capture_enable;
-    // Write counter-only snapshots to /ext/pocsag/stats.txt.
+    // Write counter-only snapshots to /ext/pager/stats.txt.
     bool stats_log_enable;
     bool stats_session_started;
     uint16_t stats_segment;
@@ -163,7 +163,7 @@ static const uint8_t flex_sampler_levels[] = {1U, 0U, 2U, 3U};
 static void flex_stats_file_open(FlexStatsFile* stats_file, FlexSampler* instance) {
     memset(stats_file, 0, sizeof(FlexStatsFile));
     stats_file->storage = furi_record_open(RECORD_STORAGE);
-    storage_simply_mkdir(stats_file->storage, EXT_PATH("pocsag"));
+    storage_simply_mkdir(stats_file->storage, EXT_PATH("pager"));
     stats_file->file = storage_file_alloc(stats_file->storage);
     const FS_OpenMode open_mode =
         instance->stats_session_started ? FSOM_OPEN_APPEND : FSOM_CREATE_ALWAYS;

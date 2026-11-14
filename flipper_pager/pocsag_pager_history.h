@@ -14,7 +14,7 @@
  */
 
 /** Where receive sessions are logged, one file per session. */
-#define PCSG_HISTORY_LOG_DIR    EXT_PATH("pocsag/logs")
+#define PCSG_HISTORY_LOG_DIR    EXT_PATH("pager/logs")
 #define PCSG_HISTORY_LOG_EXT    ".txt"
 /*
  * A kept log's index is saved beside it under the same stamp, so the pair
@@ -25,7 +25,7 @@
  */
 #define PCSG_HISTORY_INDEX_EXT  ".idx"
 /** Single session file used instead in temp mode, outside the logs folder. */
-#define PCSG_HISTORY_TEMP_PATH  EXT_PATH("pocsag/.session.tmp")
+#define PCSG_HISTORY_TEMP_PATH  EXT_PATH("pager/.session.tmp")
 #define PCSG_HISTORY_LABEL_SIZE 40U
 /** Longest log line written or read; fits the longest escaped header and message. */
 #define PCSG_HISTORY_MAX_LINE   3072U

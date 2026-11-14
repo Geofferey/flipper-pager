@@ -181,7 +181,7 @@ typedef struct {
     int32_t freq_correction_ppm;
     // Record the raw FLEX4 sample stream to SD (debug / offline analysis).
     bool raw_capture;
-    // Write counter-only FLEX4 diagnostics to /ext/pocsag/stats.txt.
+    // Write counter-only FLEX4 diagnostics to /ext/pager/stats.txt.
     bool stats_log;
     // FLEX4 soft-decision (Chase) recovery of weak words; off by default, and
     // allocates nothing in the decoder unless enabled.

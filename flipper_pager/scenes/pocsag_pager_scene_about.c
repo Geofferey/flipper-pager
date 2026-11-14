@@ -19,13 +19,13 @@ void pocsag_pager_scene_about_widget_callback(GuiButtonType result, InputType ty
  * Without it the screen still names who the app is built on and where to find
  * the rest, so attribution never depends on a file being copied.
  */
-#define PCSG_ABOUT_PATH EXT_PATH("pocsag/ABOUT.txt")
+#define PCSG_ABOUT_PATH EXT_PATH("pager/ABOUT.txt")
 #define PCSG_ABOUT_MAX_SIZE 4096U
 
 static const char pcsg_about_fallback[] =
     "Developed by @xMasterX &\n@Shmuma, @htotoo, @Geofferey,\n"
     "on multimon-ng and Mayhem\nFLEX. Icons by @Svaarich.\n\n"
-    "ABOUT.txt was not found in\n/ext/pocsag/\n\nFull credits and docs:\n"
+    "ABOUT.txt was not found in\n/ext/pager/\n\nFull credits and docs:\n"
     "github.com/Geofferey/\nFlipper-Momentum-Apps\n/tree/flex/pocsag_pager\n";
 
 // Append the file's contents, or false if it could not be read whole.

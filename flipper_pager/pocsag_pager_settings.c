@@ -11,7 +11,7 @@
 
 #define TAG "PCSGSettings"
 
-#define PCSG_SETTINGS_DIR       EXT_PATH("apps_data/pocsag_pager")
+#define PCSG_SETTINGS_DIR       EXT_PATH("apps_data/flipper_pager")
 #define PCSG_SETTINGS_PATH      PCSG_SETTINGS_DIR "/settings.txt"
 #define PCSG_SETTINGS_FILE_TYPE "POCSAG Pager Settings"
 #define PCSG_SETTINGS_VERSION   1U

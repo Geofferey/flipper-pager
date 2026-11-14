@@ -1,6 +1,6 @@
 #include "pocsag_pager_receiver.h"
 #include "../pocsag_pager_app_i.h"
-#include "pocsag_pager_icons.h"
+#include "flipper_pager_icons.h"
 #include <input/input.h>
 #include <gui/elements.h>
 

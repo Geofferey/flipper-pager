@@ -21,7 +21,7 @@
  * so a reader can search by address without reading the log; a temp session
  * puts it at the hidden path below and discards it on close.
  */
-#define PCSG_HISTORY_INDEX_PATH       EXT_PATH("pocsag/.session.idx")
+#define PCSG_HISTORY_INDEX_PATH       EXT_PATH("pager/.session.idx")
 #define PCSG_HISTORY_LABEL_CACHE_SIZE 4U
 #define PCSG_HISTORY_PREFIX_SIZE      256U
 
@@ -135,7 +135,7 @@ static void pcsg_history_destroy_temp(Storage* storage) {
 static bool pcsg_history_open_log(PCSGHistory* instance, uint32_t frequency) {
     if(instance->file_open) return true;
 
-    storage_simply_mkdir(instance->storage, EXT_PATH("pocsag"));
+    storage_simply_mkdir(instance->storage, EXT_PATH("pager"));
     FuriString* path = furi_string_alloc();
     FuriString* index_path = furi_string_alloc();
     if(instance->temp_mode) {

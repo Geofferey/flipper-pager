@@ -61,7 +61,7 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   scroll long messages). Hold OK on a message to enable an exact filter for
   its FLEX CAP or POCSAG RIC. Double-press Back to jump to the newest message;
   hold Back to end the receive session. Left opens the receiver Config.
-- **Review messages** opens a saved session log from `/ext/pocsag/logs` using
+- **Review messages** opens a saved session log from `/ext/pager/logs` using
   the same row layout, scrolling and message view as the live list. OK opens
   a message; double-press Back jumps to the newest message, and hold Back exits
   the log. The status bar shows the session time and message count. Config and
@@ -84,7 +84,7 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   and a capcode filter. The receive activity blink can be disabled or set to
   cyan, blue, green, yellow, magenta, red or white; the successful-decode green
   blink can be disabled independently. Settings are saved to
-  `/ext/apps_data/pocsag_pager/settings.txt` and restored at startup.
+  `/ext/apps_data/flipper_pager/settings.txt` and restored at startup.
 
 **Alert Tone** offers `Default` (the existing short beep) and `Classic`.
 Classic follows the user's [pager tone reference](https://youtu.be/IVyItS3sZLo):
@@ -167,17 +167,17 @@ buffers are released when the message is closed. Display filters only control
 which messages enter the live list; the session log retains every decoded
 message, including duplicates, encrypted payloads and partial pages.
 
-- **Temp** (default): one hidden file, `/ext/pocsag/.session.tmp`, overwritten
+- **Temp** (default): one hidden file, `/ext/pager/.session.tmp`, overwritten
   each receive session. It is overwritten with zeros and deleted when a new
   session starts, when the app exits, and at the next start after a crash.
   This is best effort: SD card wear levelling can keep old data in cells the
   file system no longer uses.
-- **Save**: one log per receive session in `/ext/pocsag/logs`, named by start
+- **Save**: one log per receive session in `/ext/pager/logs`, named by start
   time and frequency, e.g. `2026-10-25_04-48-13_929.6125.txt`. One line per
   message: time, frequency, protocol, header and message, tab-separated.
 
 The debug **Stats Log** option writes counter-only FLEX4 snapshots to
-`/ext/pocsag/stats.txt` every 30 seconds and on normal exit, overwriting the
+`/ext/pager/stats.txt` every 30 seconds and on normal exit, overwriting the
 file when the next enabled session starts. It records no capcodes or message
 text and can be used while the pager is unplugged. Each snapshot also records
 current free heap, the session minimum, and the largest contiguous free block
@@ -188,7 +188,7 @@ Logs can contain other people's personal information; see the
 
 ## Frequencies
 
-On first start the app creates `/ext/pocsag/settings.txt` (a standard Flipper
+On first start the app creates `/ext/pager/settings.txt` (a standard Flipper
 Sub-GHz setting file) with the standard Sub-GHz frequencies plus these paging
 channels:
 

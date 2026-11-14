@@ -27,7 +27,7 @@ static void pocsag_pager_app_tick_event_callback(void* context) {
     scene_manager_handle_tick_event(app->scene_manager);
 }
 
-#define PCSG_FREQUENCY_FILE EXT_PATH("pocsag/settings.txt")
+#define PCSG_FREQUENCY_FILE EXT_PATH("pager/settings.txt")
 
 // Paging channels added to the standard Sub-GHz list.
 // POCSAG: DAPNET 439.9875 MHz (the app's default, missing from the standard
@@ -67,7 +67,7 @@ static const uint32_t pcsg_paging_frequencies[] = {
 static void pocsag_pager_app_create_frequency_file(void) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
     if(!storage_file_exists(storage, PCSG_FREQUENCY_FILE)) {
-        storage_simply_mkdir(storage, EXT_PATH("pocsag"));
+        storage_simply_mkdir(storage, EXT_PATH("pager"));
         FlipperFormat* file = flipper_format_file_alloc(storage);
         bool ok = flipper_format_file_open_new(file, PCSG_FREQUENCY_FILE) &&
                   flipper_format_write_header_cstr(

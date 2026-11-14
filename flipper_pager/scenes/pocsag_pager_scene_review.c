@@ -36,7 +36,7 @@ static void pocsag_pager_scene_review_item_callback(
 
 static bool pocsag_pager_scene_review_pick_log(POCSAGPagerApp* app) {
     Storage* storage = furi_record_open(RECORD_STORAGE);
-    storage_simply_mkdir(storage, EXT_PATH("pocsag"));
+    storage_simply_mkdir(storage, EXT_PATH("pager"));
     storage_simply_mkdir(storage, PCSG_HISTORY_LOG_DIR);
     furi_record_close(RECORD_STORAGE);
 

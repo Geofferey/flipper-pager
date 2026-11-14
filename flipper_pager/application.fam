@@ -1,5 +1,5 @@
 App(
-    appid="pocsag_pager",
+    appid="flipper_pager",
     name="Flipper Pager",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="pocsag_pager_app",
@@ -9,7 +9,7 @@ App(
     fap_icon="pocsag_pager_10px.png",
     fap_category="Sub-GHz",
     fap_icon_assets="images",
-    # The About text is read from /ext/pocsag/ABOUT.txt instead of living in
+    # The About text is read from /ext/pager/ABOUT.txt instead of living in
     # .rodata, where it would occupy RAM for the whole session. Published next
     # to the .fap so the installed copy matches the build.
     fap_extbuild=(

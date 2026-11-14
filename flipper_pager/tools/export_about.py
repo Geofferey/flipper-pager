@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Copy ABOUT.txt into the build output, next to the built .fap.
 
-The About screen reads its text from /ext/pocsag/ABOUT.txt at runtime
+The About screen reads its text from /ext/pager/ABOUT.txt at runtime
 rather than carrying it in .rodata, because a FAP is loaded into RAM
 whole: a string literal for a screen opened once still costs RAM for
 the whole session. Publishing the file beside the .fap keeps the two in

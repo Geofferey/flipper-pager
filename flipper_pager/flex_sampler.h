@@ -24,7 +24,7 @@ bool flex_sampler_get_frame_timing(const FlexSampler* instance, FlexFrameTiming*
 /** Record this receive session's raw sample stream to a timestamped file. */
 void flex_sampler_set_capture(FlexSampler* instance, bool enable);
 
-/** Write periodic counter-only diagnostics to /ext/pocsag/stats.txt. */
+/** Write periodic counter-only diagnostics to /ext/pager/stats.txt. */
 void flex_sampler_set_stats_log(FlexSampler* instance, bool enable);
 
 /** Set the active RX crystal correction reported in diagnostics. */

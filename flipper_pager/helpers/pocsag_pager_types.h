@@ -9,7 +9,7 @@
  * PortaPack Mayhem FLEX RX/TX (git history; the files have no headers).
  *
  * The credits the About screen shows are in ABOUT.txt beside this app,
- * installed to /ext/pocsag/ABOUT.txt, with a shortened copy compiled into
+ * installed to /ext/pager/ABOUT.txt, with a shortened copy compiled into
  * pocsag_pager_scene_about.c for when that file is absent.
  */
 
