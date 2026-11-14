@@ -6,7 +6,7 @@ App(
     requires=["gui"],
     stack_size=4 * 1024,
     order=50,
-    fap_icon="pocsag_pager_10px.png",
+    fap_icon="flipper_pager_10px.png",
     fap_category="Sub-GHz",
     fap_icon_assets="images",
     # The About text is read from /ext/pager/flipper_pager.txt instead of living in
