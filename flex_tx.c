@@ -23,6 +23,14 @@
 #define FLEX_TX_SYNC1_BYTES    14U
 #define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
 /*
+ * The test beacon repeats, so a receiver has many chances at it and only the
+ * first needs a cold start: 240 ms of runway rather than 1.44 s, which also
+ * tightens the gap between bursts. sync1 carries 32 bits of its own bit sync
+ * after this, so even a cold DPLL has something to pull on.
+ */
+#define FLEX_TX_TEST_ERS_CYCLES 4U
+#define FLEX_TX_TEST_ERS_BYTES  (FLEX_TX_TEST_ERS_CYCLES * 12U)
+/*
  * 3200/2-level keeps the burst, sync1 and the FIW at 1600 -- a receiver has to
  * read the mode out of sync1 before it can know any other rate -- and runs
  * everything after them at twice that. sync2 is a fixed 25 ms, so it costs
@@ -62,8 +70,8 @@
  * FLEX runs on GPS time; the receiver takes the offset back off again. Keep in
  * step with PCSG_GPS_UTC_OFFSET_S in pocsag_pager_time.c.
  */
-#define FLEX_TX_PRE_FIW_MS \
-    (((FLEX_TX_ERS_BYTES + FLEX_TX_SYNC1_BYTES) * 8U * 1000U) / FLEX_TX_BAUD)
+#define FLEX_TX_PRE_FIW_MS(ers_bytes) \
+    ((((ers_bytes) + FLEX_TX_SYNC1_BYTES) * 8U * 1000U) / FLEX_TX_BAUD)
 #define FLEX_TX_GPS_UTC_OFFSET_S 18U
 #define FLEX_TX_FRAME_MS         1875U
 #define FLEX_TX_CYCLE_MS         240000U
@@ -73,6 +81,8 @@ struct FlexTxEncoder {
     uint8_t bytes[FLEX_TX_BUFFER_BYTES];
     size_t byte_count;
     size_t bit_index;
+    // Where the frames start, the acquisition burst being of either length.
+    size_t frame_base;
     bool fast;
     bool inverted;
     bool lead_in_pending;
@@ -142,14 +152,14 @@ static uint32_t flex_tx_biw_zone(void) {
 }
 
 // Where the frame lands in the hour once it is actually on the air.
-static void flex_tx_clock(uint8_t* cycle, uint8_t* frame, uint8_t* hour) {
+static void flex_tx_clock(uint8_t* cycle, uint8_t* frame, uint8_t* hour, uint32_t pre_fiw_ms) {
     DateTime datetime;
     furi_hal_rtc_get_datetime(&datetime);
 
     uint32_t ms = ((uint32_t)datetime.minute * 60U + datetime.second +
                    FLEX_TX_GPS_UTC_OFFSET_S) *
                       1000U +
-                  FLEX_TX_PRE_FIW_MS + (FLEX_TX_FRAME_MS / 2U);
+                  pre_fiw_ms + (FLEX_TX_FRAME_MS / 2U);
     uint32_t hours = datetime.hour;
     if(ms >= FLEX_TX_HOUR_MS) {
         ms -= FLEX_TX_HOUR_MS;
@@ -255,9 +265,9 @@ static void flex_tx_write_word(uint8_t** output, uint32_t word) {
     *(*output)++ = word & 0xFFU;
 }
 
-static void flex_tx_write_ers(uint8_t** output) {
+static void flex_tx_write_ers(uint8_t** output, uint8_t cycles) {
     static const uint8_t ers_code[] = {0xCB, 0x20, 0x59, 0x39};
-    for(uint8_t cycle = 0; cycle < FLEX_TX_ERS_CYCLES; cycle++) {
+    for(uint8_t cycle = 0; cycle < cycles; cycle++) {
         *(*output)++ = 0xAA;
         *(*output)++ = 0xAA;
         for(size_t i = 0; i < COUNT_OF(ers_code); i++) *(*output)++ = ers_code[i];
@@ -429,7 +439,10 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         .message_number = message_number,
         .signature = flex_tx_signature(config->message, message_length),
     };
-    flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour);
+    const uint8_t ers_cycles =
+        config->test_beacon ? FLEX_TX_TEST_ERS_CYCLES : FLEX_TX_ERS_CYCLES;
+    const size_t ers_bytes = (size_t)ers_cycles * 12U;
+    flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(ers_bytes));
 
     // A tone-only page and a test beacon are one frame with nothing to split.
     const uint8_t fragments =
@@ -446,7 +459,8 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
      * a repeat apart, so repeating is not required of a sender.
      */
     uint8_t* output = encoder->bytes;
-    flex_tx_write_ers(&output);
+    flex_tx_write_ers(&output, ers_cycles);
+    encoder->frame_base = ers_bytes;
     for(uint8_t i = 0; i < fragments; i++) {
         const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
         const size_t remaining = message_length - offset;
@@ -479,8 +493,8 @@ static bool flex_tx_wire_bit(const FlexTxEncoder* encoder, size_t bit_index) {
 static bool flex_tx_bit_is_fast(const FlexTxEncoder* encoder, size_t bit_index) {
     if(!encoder->fast) return false;
     const size_t byte = bit_index / 8U;
-    if(byte < FLEX_TX_ERS_BYTES) return false;
-    const size_t into = (byte - FLEX_TX_ERS_BYTES) % FLEX_TX_FAST_FRAME_BYTES;
+    if(byte < encoder->frame_base) return false;
+    const size_t into = (byte - encoder->frame_base) % FLEX_TX_FAST_FRAME_BYTES;
     return into >= FLEX_TX_HEAD_BYTES &&
            into < FLEX_TX_FAST_FRAME_BYTES - FLEX_TX_TAIL_BYTES;
 }
