@@ -29,10 +29,10 @@ static void pocsag_pager_scene_tx_confirm_show_result(
 void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
     POCSAGPagerApp* app = context;
     char correction[16];
-    if(app->tx_config.frequency_correction_hz == 0) {
+    if(app->filter.frequency_correction_hz == 0) {
         strlcpy(correction, "Off", sizeof(correction));
     } else {
-        const int32_t correction_hz = app->tx_config.frequency_correction_hz;
+        const int32_t correction_hz = app->filter.frequency_correction_hz;
         const uint32_t magnitude =
             correction_hz < 0 ? (uint32_t)-correction_hz : (uint32_t)correction_hz;
         snprintf(

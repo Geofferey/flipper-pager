@@ -252,15 +252,48 @@ const char* const raw_capture_text[RAW_CAPTURE_COUNT] = {
     "Off",
     "On",
 };
-// Index 0 is -PCSG_FREQ_PPM_MAX; the centre index is 0 ppm.
-#define FREQ_PPM_COUNT (2U * PCSG_FREQ_PPM_MAX + 1U)
+// Index 0 is the lowest the arrows reach; the centre index is no correction.
+#define FREQ_CORR_COUNT \
+    ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
+
+static void pocsag_pager_scene_receiver_config_show_freq_corr(VariableItem* item, int32_t hz) {
+    if(hz == 0) {
+        variable_item_set_current_value_text(item, "Off");
+        return;
+    }
+    char buf[16];
+    const uint32_t magnitude = hz < 0 ? (uint32_t)-hz : (uint32_t)hz;
+    snprintf(
+        buf,
+        sizeof(buf),
+        "%c%lu.%01lu kHz",
+        hz < 0 ? '-' : '+',
+        magnitude / 1000U,
+        (magnitude % 1000U) / 100U);
+    variable_item_set_current_value_text(item, buf);
+}
+
+// A typed value can sit past what the arrows reach, so clamp rather than
+// discard: the row still displays the real value, it just stops stepping.
+static uint8_t pocsag_pager_scene_receiver_config_freq_corr_index(int32_t hz) {
+    if(hz > PCSG_FREQ_CORRECTION_LIST_MAX_HZ) {
+        hz = PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
+    } else if(hz < -PCSG_FREQ_CORRECTION_LIST_MAX_HZ) {
+        hz = -PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
+    }
+    const int32_t offset = hz + PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
+    return (uint8_t)((offset + PCSG_FREQ_CORRECTION_STEP_HZ / 2) / PCSG_FREQ_CORRECTION_STEP_HZ);
+}
+
 static void pocsag_pager_scene_receiver_config_set_freq_corr(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
-    const int32_t ppm = (int32_t)variable_item_get_current_value_index(item) - PCSG_FREQ_PPM_MAX;
-    app->filter.freq_correction_ppm = ppm;
-    char buf[8];
-    snprintf(buf, sizeof(buf), "%+ld", (long)ppm);
-    variable_item_set_current_value_text(item, buf);
+    const uint8_t index = variable_item_get_current_value_index(item);
+    app->filter.frequency_correction_hz =
+        -PCSG_FREQ_CORRECTION_LIST_MAX_HZ + index * PCSG_FREQ_CORRECTION_STEP_HZ;
+    pocsag_pager_scene_receiver_config_show_freq_corr(
+        item, app->filter.frequency_correction_hz);
+    // The receiver retunes with it, as changing the channel does.
+    app->txrx->rx_restart = true;
 }
 
 /*
@@ -268,7 +301,7 @@ static void pocsag_pager_scene_receiver_config_set_freq_corr(VariableItem* item)
  * described here instead of getting its own setter and its own four lines in
  * on_enter. The entries are placed by PCSGSettingIndex, so the table and the
  * list cannot drift apart, and the gaps are the rows that genuinely differ
- * (frequency, preset, the number entries, ppm, Lock).
+ * (frequency, preset, the number entries, the correction, Lock).
  */
 typedef enum {
     PCSGRowNone, // a row this table does not describe
@@ -477,6 +510,9 @@ static void
         app->filter.capcode_filter == PCSGCapcodeFilterRange) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, PCSGCustomEventSceneSettingCapcodeMax);
+    } else if(index == PCSGSettingIndexFreqCorr) {
+        view_dispatcher_send_custom_event(
+            app->view_dispatcher, PCSGCustomEventSceneSettingFreqCorr);
     } else if(index == PCSGSettingIndexRicMin) {
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingRicMin);
     } else if(
@@ -567,16 +603,15 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
 
     item = variable_item_list_add(
         app->variable_item_list,
-        "ppm +/- :",
-        FREQ_PPM_COUNT,
+        "Correction:",
+        FREQ_CORR_COUNT,
         pocsag_pager_scene_receiver_config_set_freq_corr,
         app);
-    value_index = (uint8_t)CLAMP(
-        app->filter.freq_correction_ppm + PCSG_FREQ_PPM_MAX, (int32_t)FREQ_PPM_COUNT - 1, 0);
-    variable_item_set_current_value_index(item, value_index);
-    char ppm_buf[8];
-    snprintf(ppm_buf, sizeof(ppm_buf), "%+ld", (long)app->filter.freq_correction_ppm);
-    variable_item_set_current_value_text(item, ppm_buf);
+    variable_item_set_current_value_index(
+        item,
+        pocsag_pager_scene_receiver_config_freq_corr_index(app->filter.frequency_correction_hz));
+    // Show what is stored, not the index: a typed value need not be on the grid.
+    pocsag_pager_scene_receiver_config_show_freq_corr(item, app->filter.frequency_correction_hz);
 
     pcsg_config_row_add(app, PCSGSettingIndexRawCapture);
     pcsg_config_row_add(app, PCSGSettingIndexStatsLog);
@@ -604,6 +639,11 @@ bool pocsag_pager_scene_receiver_config_on_event(void* context, SceneManagerEven
         if(event.event == PCSGCustomEventSceneSettingLock) {
             app->lock = PCSGLockOn;
             scene_manager_previous_scene(app->scene_manager);
+            consumed = true;
+        } else if(event.event == PCSGCustomEventSceneSettingFreqCorr) {
+            scene_manager_set_scene_state(
+                app->scene_manager, POCSAGPagerSceneCapcodeInput, PCSGNumberFieldFreqCorrection);
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneCapcodeInput);
             consumed = true;
         } else if(event.event == PCSGCustomEventSceneSettingFrequency) {
             scene_manager_set_scene_state(

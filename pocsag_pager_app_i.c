@@ -77,7 +77,8 @@ uint32_t pcsg_rx(POCSAGPagerApp* app, uint32_t frequency) {
 
     // Compensate the crystal offset so the LO lands on the selected channel.
     // The displayed frequency stays nominal; only the tuning is shifted.
-    uint32_t tuned = pcsg_correct_frequency(app->filter.freq_correction_ppm, frequency);
+    const int64_t corrected = (int64_t)frequency + app->filter.frequency_correction_hz;
+    uint32_t tuned = (corrected > 0 && corrected <= UINT32_MAX) ? (uint32_t)corrected : frequency;
     if(!subghz_devices_is_frequency_valid(app->txrx->radio_device, tuned)) tuned = frequency;
 
     subghz_devices_idle(app->txrx->radio_device);
@@ -139,7 +140,7 @@ uint32_t pcsg_rx(POCSAGPagerApp* app, uint32_t frequency) {
         flex_sampler_set_capture(app->txrx->flex_sampler, app->filter.raw_capture);
         flex_sampler_set_stats_log(app->txrx->flex_sampler, app->filter.stats_log);
         flex_sampler_set_freq_correction(
-            app->txrx->flex_sampler, app->filter.freq_correction_ppm);
+            app->txrx->flex_sampler, app->filter.frequency_correction_hz);
         flex_sampler_set_weak_decode(app->txrx->flex_sampler, app->filter.weak_decode);
         flex_sampler_start(app->txrx->flex_sampler);
     } else {
@@ -202,11 +203,9 @@ PCSGTxStartStatus pcsg_tx_start(POCSAGPagerApp* app) {
     if(app->txrx->txrx_state == PCSGTxRxStateTx) pcsg_tx_stop(app);
     if(app->txrx->txrx_state == PCSGTxRxStateSleep) return PCSGTxStartInvalid;
 
-    // Global ppm correction (same as RX) plus the TX per-shot Hz nudge.
-    const uint32_t ppm_corrected =
-        pcsg_correct_frequency(app->filter.freq_correction_ppm, app->tx_config.frequency);
+    // The same correction the receiver tunes with.
     const int64_t corrected_frequency =
-        (int64_t)ppm_corrected + app->tx_config.frequency_correction_hz;
+        (int64_t)app->tx_config.frequency + app->filter.frequency_correction_hz;
     if(corrected_frequency <= 0 || corrected_frequency > UINT32_MAX) {
         return PCSGTxStartInvalid;
     }

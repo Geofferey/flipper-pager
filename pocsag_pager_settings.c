@@ -16,19 +16,6 @@
 #define PCSG_SETTINGS_FILE_TYPE "POCSAG Pager Settings"
 #define PCSG_SETTINGS_VERSION   1U
 
-uint32_t pcsg_correct_frequency(int32_t ppm, uint32_t nominal) {
-    if(ppm == 0) return nominal;
-    // Round the offset to the nearest Hz, away from zero on a tie. Splitting
-    // nominal into whole * 1e6 + fraction keeps both products inside 32 bits:
-    // nominal * |ppm| / 1e6 == whole * |ppm| + (fraction * |ppm|) / 1e6. Doing
-    // this in 64-bit instead links in __udivmoddi4 (~700 bytes) for nothing.
-    const uint32_t magnitude = (uint32_t)(ppm < 0 ? -ppm : ppm);
-    const uint32_t offset = (nominal / 1000000U) * magnitude +
-                            ((nominal % 1000000U) * magnitude + 500000U) / 1000000U;
-    if(ppm < 0) return offset >= nominal ? 0U : nominal - offset;
-    return nominal + offset;
-}
-
 static bool pcsg_filter_in_range(
     PCSGCapcodeFilter mode,
     uint32_t first,
@@ -148,7 +135,10 @@ static const PCSGSetting pcsg_settings[] = {
     {"ToneVolume", PCSGToneVolumeCount - 1, PCSG_FIELD(filter.tone_volume), PCSGSetU32},
     {"TonePitch", PCSGTonePitchCount - 1, PCSG_FIELD(filter.tone_pitch), PCSGSetU32},
     {"ToneSpread", PCSGToneSpreadCount - 1, PCSG_FIELD(filter.tone_spread), PCSGSetU32},
-    {"FreqCorrPpm", PCSG_FREQ_PPM_MAX, PCSG_FIELD(filter.freq_correction_ppm), PCSGSetI32},
+    {"FreqCorrHz",
+     PCSG_FREQ_CORRECTION_MAX_HZ,
+     PCSG_FIELD(filter.frequency_correction_hz),
+     PCSGSetStep},
     {"RawCapture", 0, PCSG_FIELD(filter.raw_capture), PCSGSetBool},
     {"StatsLog", 0, PCSG_FIELD(filter.stats_log), PCSGSetBool},
     {"WeakDecode", 0, PCSG_FIELD(filter.weak_decode), PCSGSetBool},
@@ -158,10 +148,6 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxBaud", 0, PCSG_FIELD(tx_config.baud), PCSGSetBaud},
     {"TxInverted", 0, PCSG_FIELD(tx_config.inverted), PCSGSetBool},
     {"TxFlex3200", 0, PCSG_FIELD(tx_config.flex_3200), PCSGSetBool},
-    {"TxCorrection",
-     PCSG_TX_CORRECTION_MAX_HZ,
-     PCSG_FIELD(tx_config.frequency_correction_hz),
-     PCSGSetStep},
     {"TxProtocol", PagerTxProtocolCount - 1, PCSG_FIELD(tx_config.protocol), PCSGSetU32},
     {"ReceiveLed", 0, PCSG_FIELD(filter.receive_led), PCSGSetBool},
     {"ReceiveLedColor", PCSGLedColorCount - 1, PCSG_FIELD(filter.receive_led_color), PCSGSetU32},
@@ -238,7 +224,7 @@ void pcsg_settings_load(POCSAGPagerApp* app) {
                     continue;
                 }
                 if(setting->kind == PCSGSetStep &&
-                   signed_value % PCSG_TX_CORRECTION_STEP_HZ != 0) {
+                   signed_value % PCSG_FREQ_CORRECTION_STEP_HZ != 0) {
                     continue;
                 }
                 *pcsg_setting_signed(app, setting) = signed_value;

@@ -286,7 +286,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->tx_config.function = 3;
     app->tx_config.baud = 1200;
     app->tx_config.inverted = false;
-    app->tx_config.frequency_correction_hz = 0;
+    app->filter.frequency_correction_hz = 0;
     pcsg_settings_load(app);
 
     app->txrx->history = pcsg_history_alloc();

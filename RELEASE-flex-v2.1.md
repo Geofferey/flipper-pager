@@ -21,7 +21,7 @@ This release does not migrate anything. Nothing is deleted either, so the old fi
 - **A page is sent once, not twice.** Airtime halves. Press send again to repeat, and each copy is marked an original.
 - **A longer acquisition burst** — 1.44 s of runway instead of 480 ms, so a receiver meeting a single transmission cold has enough of it to recover the bit clock.
 - **Type an arbitrary TX frequency.** OK on the frequency row opens number entry; left and right still step through the channel list. The radio decides what it will tune, so a value outside its bands leaves the old one alone.
-- **Per-shot correction widened to ±15 kHz, in 0.1 kHz steps.** 10 kHz was short of what a crystal error reaches at 930 MHz, and 0.5 kHz steps were too coarse to centre a FLEX carrier. Left and right cover ±12.7 kHz; OK on the row types any value in range.
+- **One frequency correction, in Hz, shared by transmit and receive.** The ppm setting is gone and the Hz correction takes its place on the receiver config screen as **Correction**, still global to the app and reachable from the transmit screen too. It runs to ±15 kHz in 0.1 kHz steps — 10 kHz fell short of what a crystal error reaches at 930 MHz, and 0.5 kHz was too coarse to centre a FLEX carrier. Left and right cover ±12.7 kHz; OK on the row types any value in range. Being hertz rather than a ratio, it stops being right once the band changes.
 - **The message text is remembered** across leaving and reopening the app. Be aware it is stored in plain text in the app's `settings.txt`.
 
 Transmit only where you are licensed and authorised.
@@ -31,7 +31,7 @@ Transmit only where you are licensed and authorised.
 - **Type an arbitrary RX frequency**, the same way as the transmit row. The displayed frequency gains two decimals, which the channels needed anyway — they carry 100 Hz detail.
 - **Multi-part messages assemble far more often.** A part whose page checksum failed used to be excluded from joining, so a message only came together if *every* part passed — which is why three-part and longer messages so often failed to join with all parts received. A damaged part is now used anyway; the result stays marked partial and the whole-message signature still has to reconcile.
 - **Frequency hopping is gone.** It scanned the Sub-GHz hopper list while receiving and never earned its special cases.
-- **Automatic frequency correction is gone.** The closed loop that drove the ppm value from the demodulator never worked properly. Manual correction is untouched.
+- **Automatic frequency correction is gone.** The closed loop that drove the correction from the demodulator never worked properly. Manual correction is untouched.
 
 ## Saved logs and review
 
@@ -51,7 +51,7 @@ The app runs without step 2; only the About screen is affected.
 
 ## Size
 
-The packaged `.fap` is **118,952 bytes**. Resident, the app is **52,181 bytes** — text 52,024, data 54, bss 103 — about where 2.0 left it despite everything above, because frequency hopping and automatic correction went out at the same time. The transmit buffer grows to 1,425 bytes for a full-length FLEX message, but that is heap held only for the length of a transmission.
+The packaged `.fap` is **119,984 bytes**. Resident, the app is **52,781 bytes** — text 52,624, data 54, bss 103 — about where 2.0 left it despite everything above, because frequency hopping and automatic correction went out at the same time. The transmit buffer is 2,496 bytes at its largest, enough for three 3200/2FSK frames, and that is heap held only for the length of a transmission.
 
 ## Building
 

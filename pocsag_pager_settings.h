@@ -29,12 +29,11 @@ typedef enum {
     PCSGNumberFieldFrameMax,
     PCSGNumberFieldRicMin,
     PCSGNumberFieldRicMax,
-    PCSGNumberFieldFreqPpm,
+    /** Crystal correction in Hz, signed, shared by RX and TX. */
+    PCSGNumberFieldFreqCorrection,
     /** Tuning frequency in Hz, checked against the radio before it is kept. */
     PCSGNumberFieldTxFrequency,
     PCSGNumberFieldRxFrequency,
-    /** Per-shot TX nudge in Hz, signed and rounded onto the arrow step. */
-    PCSGNumberFieldTxCorrection,
 } PCSGNumberField;
 
 /*
@@ -178,9 +177,10 @@ typedef struct {
     PCSGToneVolume tone_volume;
     PCSGTonePitch tone_pitch;
     PCSGToneSpread tone_spread;
-    // Crystal offset compensation applied to both RX and TX tuning, in ppm.
-    // One value works on every band; +ppm corrects a carrier that runs low.
-    int32_t freq_correction_ppm;
+    // Crystal offset compensation applied to both RX and TX tuning, in Hz.
+    // Positive raises the carrier, so a radio that runs low needs a positive
+    // value.
+    int32_t frequency_correction_hz;
     // Record the raw FLEX4 sample stream to SD (debug / offline analysis).
     bool raw_capture;
     // Write counter-only FLEX4 diagnostics to /ext/pager/stats.txt.
@@ -190,11 +190,22 @@ typedef struct {
     bool weak_decode;
 } PCSGFilterSettings;
 
-/** Largest crystal correction offered, in ppm. */
-#define PCSG_FREQ_PPM_MAX 100
-
-/** Apply a ppm correction to a nominal frequency: nominal * (1 + ppm/1e6). */
-uint32_t pcsg_correct_frequency(int32_t ppm, uint32_t nominal);
+/*
+ * One correction for both RX and TX, added to the frequency handed to the
+ * radio; the displayed frequency stays nominal. Wide enough for a crystal
+ * error at the top of the range, about 14 ppm reaching 13 kHz at 930 MHz.
+ * Being a fixed number of hertz rather than a ratio, it stops being right as
+ * soon as the band changes, which is the trade for setting it this finely.
+ */
+#define PCSG_FREQ_CORRECTION_MIN_HZ  (-15000)
+#define PCSG_FREQ_CORRECTION_MAX_HZ  15000
+#define PCSG_FREQ_CORRECTION_STEP_HZ 100
+/*
+ * Arrows cannot span the whole range at that step: variable_item_list_add()
+ * counts values in a uint8_t and 30 kHz of them needs 301. They reach this
+ * far either side; OK on the row types any value up to the limits above.
+ */
+#define PCSG_FREQ_CORRECTION_LIST_MAX_HZ 12700
 
 typedef struct POCSAGPagerApp POCSAGPagerApp;
 

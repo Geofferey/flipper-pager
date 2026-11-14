@@ -27,8 +27,8 @@ void flex_sampler_set_capture(FlexSampler* instance, bool enable);
 /** Write periodic counter-only diagnostics to /ext/pager/stats.txt. */
 void flex_sampler_set_stats_log(FlexSampler* instance, bool enable);
 
-/** Set the active RX crystal correction reported in diagnostics. */
-void flex_sampler_set_freq_correction(FlexSampler* instance, int32_t ppm);
+/** Set the active RX crystal correction reported in diagnostics, in Hz. */
+void flex_sampler_set_freq_correction(FlexSampler* instance, int32_t hz);
 
 /** Enable opt-in soft-decision (Chase) recovery of weak FLEX4 words. */
 void flex_sampler_set_weak_decode(FlexSampler* instance, bool enable);

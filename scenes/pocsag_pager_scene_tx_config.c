@@ -19,8 +19,8 @@ static const char* const tx_function_text[] = {"0", "1", "2", "3"};
 static const char* const tx_polarity_text[] = {"Standard", "Inverted"};
 static const char* const tx_flex_mode_text[] = {"1600/2FSK", "3200/2FSK"};
 
-#define PCSG_TX_CORRECTION_COUNT                                                   \
-    ((PCSG_TX_CORRECTION_LIST_MAX_HZ * 2) / PCSG_TX_CORRECTION_STEP_HZ + 1)
+#define PCSG_FREQ_CORR_COUNT                                                   \
+    ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
 
 static uint8_t pocsag_pager_scene_tx_frequency_index(POCSAGPagerApp* app) {
     for(uint8_t i = 0; i < subghz_setting_get_frequency_count(app->setting); i++) {
@@ -39,13 +39,13 @@ static uint8_t pocsag_pager_scene_tx_baud_index(uint16_t baud) {
 // A typed value can sit past what the arrows reach, so clamp rather than
 // discard: the row still displays the real value, it just stops stepping.
 static uint8_t pocsag_pager_scene_tx_correction_index(int32_t correction_hz) {
-    if(correction_hz > PCSG_TX_CORRECTION_LIST_MAX_HZ) {
-        correction_hz = PCSG_TX_CORRECTION_LIST_MAX_HZ;
-    } else if(correction_hz < -PCSG_TX_CORRECTION_LIST_MAX_HZ) {
-        correction_hz = -PCSG_TX_CORRECTION_LIST_MAX_HZ;
+    if(correction_hz > PCSG_FREQ_CORRECTION_LIST_MAX_HZ) {
+        correction_hz = PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
+    } else if(correction_hz < -PCSG_FREQ_CORRECTION_LIST_MAX_HZ) {
+        correction_hz = -PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
     }
-    const int32_t offset = correction_hz + PCSG_TX_CORRECTION_LIST_MAX_HZ;
-    return (uint8_t)((offset + PCSG_TX_CORRECTION_STEP_HZ / 2) / PCSG_TX_CORRECTION_STEP_HZ);
+    const int32_t offset = correction_hz + PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
+    return (uint8_t)((offset + PCSG_FREQ_CORRECTION_STEP_HZ / 2) / PCSG_FREQ_CORRECTION_STEP_HZ);
 }
 
 static void pocsag_pager_scene_tx_show_correction(VariableItem* item, int32_t correction_hz) {
@@ -178,9 +178,9 @@ static void pocsag_pager_scene_tx_set_polarity(VariableItem* item) {
 static void pocsag_pager_scene_tx_set_correction(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
     const uint8_t index = variable_item_get_current_value_index(item);
-    app->tx_config.frequency_correction_hz =
-        -PCSG_TX_CORRECTION_LIST_MAX_HZ + index * PCSG_TX_CORRECTION_STEP_HZ;
-    pocsag_pager_scene_tx_show_correction(item, app->tx_config.frequency_correction_hz);
+    app->filter.frequency_correction_hz =
+        -PCSG_FREQ_CORRECTION_LIST_MAX_HZ + index * PCSG_FREQ_CORRECTION_STEP_HZ;
+    pocsag_pager_scene_tx_show_correction(item, app->filter.frequency_correction_hz);
 }
 
 static void pocsag_pager_scene_tx_enter_callback(void* context, uint32_t index) {
@@ -242,15 +242,15 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
 
     item = variable_item_list_add(
         app->variable_item_list,
-        "TX correction:",
-        PCSG_TX_CORRECTION_COUNT,
+        "Correction:",
+        PCSG_FREQ_CORR_COUNT,
         pocsag_pager_scene_tx_set_correction,
         app);
     const uint8_t correction_index =
-        pocsag_pager_scene_tx_correction_index(app->tx_config.frequency_correction_hz);
+        pocsag_pager_scene_tx_correction_index(app->filter.frequency_correction_hz);
     variable_item_set_current_value_index(item, correction_index);
     // Show what is stored, not the index: a typed value need not be on the grid.
-    pocsag_pager_scene_tx_show_correction(item, app->tx_config.frequency_correction_hz);
+    pocsag_pager_scene_tx_show_correction(item, app->filter.frequency_correction_hz);
 
     item = variable_item_list_add(app->variable_item_list, "Message:", 1, NULL, app);
     const size_t message_length = strlen(app->tx_config.message);
@@ -287,7 +287,7 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
     }
     if(event.event == PCSGTxConfigCorrection) {
         scene_manager_set_scene_state(
-            app->scene_manager, POCSAGPagerSceneCapcodeInput, PCSGNumberFieldTxCorrection);
+            app->scene_manager, POCSAGPagerSceneCapcodeInput, PCSGNumberFieldFreqCorrection);
         scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneCapcodeInput);
         return true;
     }

@@ -149,7 +149,7 @@ struct FlexSampler {
     bool stats_log_enable;
     bool stats_session_started;
     uint16_t stats_segment;
-    int32_t freq_correction_ppm;
+    int32_t freq_correction_hz;
     bool weak_decode_enable;
     // Reaches this radio's CC1101, to configure the pin GDO1 arrives on.
     const FuriHalSpiBusHandle* spi;
@@ -177,11 +177,11 @@ static void flex_stats_file_open(FlexStatsFile* stats_file, FlexSampler* instanc
             header,
             sizeof(header),
             "# FLEX4 segment %u; counters reset; no message content\n"
-            "weak_decode=%u raw_capture=%u ppm=%ld\n\n",
+            "weak_decode=%u raw_capture=%u corr=%ldHz\n\n",
             instance->stats_segment,
             instance->weak_decode_enable,
             instance->capture_enable,
-            (long)instance->freq_correction_ppm);
+            (long)instance->freq_correction_hz);
         if(length > 0) {
             storage_file_write(
                 stats_file->file, header, MIN((size_t)length, sizeof(header) - 1U));
@@ -201,7 +201,7 @@ static void flex_stats_file_open(FlexStatsFile* stats_file, FlexSampler* instanc
  * trailing newline because FURI_LOG adds its own.
  */
 static const char flex_stats_fmt_sampler[] =
-    "n=%lu ppm=%ld h=%lu/%lu/%lu/%lu tr=%lu drop=%lu sync=%lu fiw=%lu/%lu soft=%lu frame=%lu interrupted=%lu prefix=%lu page=%lu enc=%lu fix=%lu";
+    "n=%lu corr=%ldHz h=%lu/%lu/%lu/%lu tr=%lu drop=%lu sync=%lu fiw=%lu/%lu soft=%lu frame=%lu interrupted=%lu prefix=%lu page=%lu enc=%lu fix=%lu";
 static const char flex_stats_fmt_words[] =
     "words=%lu bad=%lu soft=%lu pages_soft=%lu biw_bad=%lu hdr_bad=%lu long=%lu partial=%lu";
 static const char flex_stats_fmt_phase[] =
@@ -231,7 +231,7 @@ static void flex_stats_file_write(
     FLEX_STATS_APPEND(
         flex_stats_fmt_sampler,
         instance->sample_count,
-        (long)instance->freq_correction_ppm,
+        (long)instance->freq_correction_hz,
         instance->symbol_count[0],
         instance->symbol_count[1],
         instance->symbol_count[2],
@@ -408,7 +408,7 @@ static int32_t flex_sampler_thread(void* context) {
                 TAG,
                 flex_stats_fmt_sampler,
                 instance->sample_count,
-                (long)instance->freq_correction_ppm,
+                (long)instance->freq_correction_hz,
                 instance->symbol_count[0],
                 instance->symbol_count[1],
                 instance->symbol_count[2],
@@ -676,9 +676,9 @@ void flex_sampler_set_stats_log(FlexSampler* instance, bool enable) {
     instance->stats_log_enable = enable;
 }
 
-void flex_sampler_set_freq_correction(FlexSampler* instance, int32_t ppm) {
+void flex_sampler_set_freq_correction(FlexSampler* instance, int32_t hz) {
     furi_assert(instance);
-    instance->freq_correction_ppm = ppm;
+    instance->freq_correction_hz = hz;
 }
 
 void flex_sampler_release_session(FlexSampler* instance) {
