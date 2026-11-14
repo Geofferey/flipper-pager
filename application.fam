@@ -9,14 +9,14 @@ App(
     fap_icon="pocsag_pager_10px.png",
     fap_category="Sub-GHz",
     fap_icon_assets="images",
-    # The About text is read from /ext/pager/ABOUT.txt instead of living in
+    # The About text is read from /ext/pager/flipper_pager.txt instead of living in
     # .rodata, where it would occupy RAM for the whole session. Published next
     # to the .fap so the installed copy matches the build.
     fap_extbuild=(
         ExtFile(
-            path="${EXT_APPS_WORK_DIR}/ABOUT.txt",
+            path="${EXT_APPS_WORK_DIR}/flipper_pager.txt",
             command="${PYTHON3} ${FAP_SRC_DIR}/tools/export_about.py "
-            "${FAP_SRC_DIR.abspath}/ABOUT.txt ${TARGET.abspath}",
+            "${FAP_SRC_DIR.abspath}/flipper_pager.txt ${TARGET.abspath}",
         ),
     ),
     fap_author="@xMasterX & @Shmuma",

@@ -8,8 +8,8 @@
  * FLEX references: multimon-ng demod_flex.c (file header credits) and
  * PortaPack Mayhem FLEX RX/TX (git history; the files have no headers).
  *
- * The credits the About screen shows are in ABOUT.txt beside this app,
- * installed to /ext/pager/ABOUT.txt, with a shortened copy compiled into
+ * The credits the About screen shows are in flipper_pager.txt beside this app,
+ * installed to /ext/pager/flipper_pager.txt, with a shortened copy compiled into
  * pocsag_pager_scene_about.c for when that file is absent.
  */
 
