@@ -165,6 +165,17 @@ static uint32_t flex_tx_short_address(uint32_t capcode) {
     return flex_tx_encode_word((capcode + 0x8000U) & FLEX_TX_DATA_MASK);
 }
 
+/*
+ * A tone-only page is carried entirely by its vector word. Bits 7-8 left at
+ * zero would announce three BCD digits in the rest of it; non-zero is the
+ * plain alert, which flex_parse_tone() in protocols/flex.c reads as "Tone
+ * only".
+ */
+static uint32_t flex_tx_tone_vector(void) {
+    const uint32_t word = (2U << 4) | (1U << 7);
+    return flex_tx_encode_word(flex_tx_checksum(word));
+}
+
 static uint32_t flex_tx_alpha_vector(uint8_t message_start, uint8_t message_words) {
     uint32_t word = 5U << 4;
     word |= ((uint32_t)message_start & 0x7FU) << 7;
@@ -331,18 +342,22 @@ static bool flex_tx_write_frame(
         for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
     }
 
+    const bool tone_only = spec->length == 0U;
     uint32_t message_words[32];
-    const uint8_t message_word_count = flex_tx_encode_alpha(
-        spec->text,
-        spec->length,
-        spec->fragment,
-        spec->continuation,
-        spec->signature,
-        spec->message_number,
-        retrieval,
-        message_words,
-        COUNT_OF(message_words));
-    if(message_word_count == 0U) return false;
+    uint8_t message_word_count = 0;
+    if(!tone_only) {
+        message_word_count = flex_tx_encode_alpha(
+            spec->text,
+            spec->length,
+            spec->fragment,
+            spec->continuation,
+            spec->signature,
+            spec->message_number,
+            retrieval,
+            message_words,
+            COUNT_OF(message_words));
+        if(message_word_count == 0U) return false;
+    }
 
     uint32_t frame_words[FLEX_TX_PHASE_WORDS];
     for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
@@ -356,7 +371,9 @@ static bool flex_tx_write_frame(
     frame_words[1] = flex_tx_biw_time(spec->hour);
     frame_words[2] = flex_tx_biw_zone();
     frame_words[address_start] = flex_tx_short_address(config->ric);
-    frame_words[vector_start] = flex_tx_alpha_vector(message_start, message_word_count);
+    frame_words[vector_start] = tone_only ?
+                                    flex_tx_tone_vector() :
+                                    flex_tx_alpha_vector(message_start, message_word_count);
     for(uint8_t i = 0; i < message_word_count; i++) {
         frame_words[message_start + i] = message_words[i];
     }
@@ -385,7 +402,8 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     furi_assert(config);
 
     const size_t message_length = strnlen(config->message, sizeof(config->message));
-    if(config->protocol != PagerTxProtocolFlex || message_length == 0U ||
+    // An empty message is a tone-only page, not a refusal.
+    if(config->protocol != PagerTxProtocolFlex ||
        message_length > PCSG_TX_MAX_MESSAGE_LENGTH || config->ric < FLEX_TX_SHORT_CAPCODE_MIN ||
        config->ric > FLEX_TX_SHORT_CAPCODE_MAX) {
         return false;
@@ -406,9 +424,12 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     };
     flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour);
 
+    // Tone only is one frame with nothing to fragment.
     const uint8_t fragments =
-        (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
-    if(fragments == 0U || fragments > FLEX_TX_MAX_FRAGMENTS) return false;
+        message_length == 0U ?
+            1U :
+            (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
+    if(fragments > FLEX_TX_MAX_FRAGMENTS) return false;
 
     /*
      * One acquisition burst and one frame. The page carries the retrieval

@@ -32,6 +32,9 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             correction_hz < 0 ? '-' : '+',
             (unsigned long)magnitude);
     }
+    // An empty message sends a tone-only page, so say so rather than show a gap.
+    const char* body =
+        app->tx_config.message[0] == '\0' ? "\e#Tone only\e#" : app->tx_config.message;
     FuriString* text;
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
         text = furi_string_alloc_printf(
@@ -47,7 +50,7 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             app->tx_config.ric,
             app->tx_config.inverted ? "Inverted" : "Standard",
             correction,
-            app->tx_config.message);
+            body);
     } else {
         text = furi_string_alloc_printf(
             "\e#Transmit POCSAG?\e#\n"
@@ -63,7 +66,7 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             app->tx_config.function,
             app->tx_config.inverted ? "Inverted" : "Standard",
             correction,
-            app->tx_config.message);
+            body);
     }
     widget_add_text_scroll_element(app->widget, 2, 0, 124, 52, furi_string_get_cstr(text));
     widget_add_button_element(

@@ -253,7 +253,12 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     pocsag_pager_scene_tx_show_correction(item, app->tx_config.frequency_correction_hz);
 
     item = variable_item_list_add(app->variable_item_list, "Message:", 1, NULL, app);
-    snprintf(text, sizeof(text), "%u chars", (unsigned)strlen(app->tx_config.message));
+    const size_t message_length = strlen(app->tx_config.message);
+    if(message_length == 0U) {
+        snprintf(text, sizeof(text), "Tone only");
+    } else {
+        snprintf(text, sizeof(text), "%u chars", (unsigned)message_length);
+    }
     variable_item_set_current_value_text(item, text);
 
     item = variable_item_list_add(app->variable_item_list, "Review & send", 1, NULL, app);
@@ -298,11 +303,8 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
             notification_message(app->notifications, &sequence_error);
             return true;
         }
-        if(app->tx_config.message[0] == '\0') {
-            notification_message(app->notifications, &sequence_error);
-        } else {
-            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxConfirm);
-        }
+        // An empty message is allowed: it sends a tone-only page.
+        scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxConfirm);
         return true;
     }
     return false;

@@ -53,7 +53,9 @@ bool pocsag_tx_encoder_prepare(PocsagTxEncoder* encoder, const PocsagTxConfig* c
     furi_assert(config);
 
     const size_t message_length = strnlen(config->message, sizeof(config->message));
-    if(config->protocol != PagerTxProtocolPocsag || message_length == 0U ||
+    // An empty message is a tone-only page: the address word alone, the
+    // function bits picking the alert, and no data words after it.
+    if(config->protocol != PagerTxProtocolPocsag ||
        message_length > PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH ||
        config->ric > PCSG_TX_RIC_MAX || config->function > 3U ||
        (config->baud != 512U && config->baud != 1200U && config->baud != 2400U)) {
