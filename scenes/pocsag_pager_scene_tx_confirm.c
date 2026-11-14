@@ -1,5 +1,8 @@
 #include "../pocsag_pager_app_i.h"
 
+/** Quiet time between test beacon bursts. */
+#define PCSG_TX_BEACON_PAUSE_MS 2000U
+
 static void pocsag_pager_scene_tx_confirm_callback(
     GuiButtonType result,
     InputType type,
@@ -28,6 +31,7 @@ static void pocsag_pager_scene_tx_confirm_show_result(
 
 void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
     POCSAGPagerApp* app = context;
+    app->tx_pause_pending = false;
     char correction[16];
     if(app->filter.frequency_correction_hz == 0) {
         strlcpy(correction, "Off", sizeof(correction));
@@ -116,15 +120,30 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
         }
         return true;
     }
+    if(event.type == SceneManagerEventTypeTick && app->tx_pause_pending) {
+        if(furi_get_tick() - app->tx_pause_tick <
+           furi_ms_to_ticks(PCSG_TX_BEACON_PAUSE_MS)) {
+            return true;
+        }
+        app->tx_pause_pending = false;
+        if(pcsg_tx_start(app) != PCSGTxStartOk) {
+            pocsag_pager_scene_tx_confirm_show_result(
+                app, "\e#Cannot transmit\e#\n\nCheck address, message,\nfrequency and mode", NULL);
+            notification_message(app->notifications, &sequence_error);
+        }
+        return true;
+    }
     if(event.type == SceneManagerEventTypeTick && pcsg_tx_complete(app)) {
         pcsg_tx_stop(app);
         /*
-         * The beacon runs until Back. Each burst is built afresh, so its cycle
-         * and frame words describe the slot it actually goes out in rather
-         * than the one the first burst did. The screen is left alone so it
-         * does not flicker once a burst.
+         * The beacon runs until Back, a burst every PCSG_TX_BEACON_PAUSE_MS.
+         * Each one is built afresh, so the gap does not leave its cycle and
+         * frame words describing a slot that has already passed. The screen is
+         * left alone so it does not flicker once a burst.
          */
-        if(app->tx_config.test_beacon && pcsg_tx_start(app) == PCSGTxStartOk) {
+        if(app->tx_config.test_beacon) {
+            app->tx_pause_tick = furi_get_tick();
+            app->tx_pause_pending = true;
             return true;
         }
         pocsag_pager_scene_tx_confirm_show_result(
@@ -141,6 +160,8 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
 
 void pocsag_pager_scene_tx_confirm_on_exit(void* context) {
     POCSAGPagerApp* app = context;
+    // Back during the gap has to stop the beacon as surely as Back mid-burst.
+    app->tx_pause_pending = false;
     if(app->txrx->txrx_state == PCSGTxRxStateTx) pcsg_tx_stop(app);
     notification_message(app->notifications, &sequence_blink_stop);
     widget_reset(app->widget);
