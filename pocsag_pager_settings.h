@@ -33,6 +33,8 @@ typedef enum {
     /** Tuning frequency in Hz, checked against the radio before it is kept. */
     PCSGNumberFieldTxFrequency,
     PCSGNumberFieldRxFrequency,
+    /** Per-shot TX nudge in Hz, signed and rounded onto the arrow step. */
+    PCSGNumberFieldTxCorrection,
 } PCSGNumberField;
 
 /*

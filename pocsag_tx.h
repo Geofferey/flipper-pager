@@ -23,7 +23,13 @@
  */
 #define PCSG_TX_CORRECTION_MIN_HZ   (-15000)
 #define PCSG_TX_CORRECTION_MAX_HZ   15000
-#define PCSG_TX_CORRECTION_STEP_HZ  500
+#define PCSG_TX_CORRECTION_STEP_HZ  100
+/*
+ * Arrows cannot span the whole range at that step: variable_item_list_add()
+ * counts values in a uint8_t and 30 kHz of them needs 301. They cover this
+ * much either side; OK on the row types any value up to the limits above.
+ */
+#define PCSG_TX_CORRECTION_LIST_MAX_HZ 12700
 
 typedef enum {
     PagerTxProtocolPocsag,

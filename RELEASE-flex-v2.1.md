@@ -19,7 +19,7 @@ This release does not migrate anything. Nothing is deleted either, so the old fi
 - **A page is sent once, not twice.** Airtime halves. Press send again to repeat, and each copy is marked an original.
 - **A longer acquisition burst** — 1.44 s of runway instead of 480 ms, so a receiver meeting a single transmission cold has enough of it to recover the bit clock.
 - **Type an arbitrary TX frequency.** OK on the frequency row opens number entry; left and right still step through the channel list. The radio decides what it will tune, so a value outside its bands leaves the old one alone.
-- **Per-shot correction widened to ±15 kHz**, in the same 0.5 kHz steps — 10 kHz was short of what a crystal error reaches at 930 MHz.
+- **Per-shot correction widened to ±15 kHz, in 0.1 kHz steps.** 10 kHz was short of what a crystal error reaches at 930 MHz, and 0.5 kHz steps were too coarse to centre a FLEX carrier. Left and right cover ±12.7 kHz; OK on the row types any value in range.
 - **The message text is remembered** across leaving and reopening the app. Be aware it is stored in plain text in the app's `settings.txt`.
 
 Transmit only where you are licensed and authorised.

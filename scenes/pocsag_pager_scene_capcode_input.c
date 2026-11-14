@@ -13,6 +13,14 @@ static bool pocsag_pager_scene_capcode_input_is_frequency(uint32_t field) {
     return field == PCSGNumberFieldTxFrequency || field == PCSGNumberFieldRxFrequency;
 }
 
+// Round onto the arrow step, so typing and stepping cannot disagree and the
+// saved value stays one the settings loader accepts.
+static int32_t pocsag_pager_scene_capcode_input_round(int32_t hz) {
+    const int32_t step = PCSG_TX_CORRECTION_STEP_HZ;
+    const int32_t half = step / 2;
+    return hz < 0 ? -(((-hz) + half) / step) * step : ((hz + half) / step) * step;
+}
+
 static uint32_t* pocsag_pager_scene_capcode_input_field(POCSAGPagerApp* app) {
     switch(scene_manager_get_scene_state(app->scene_manager, POCSAGPagerSceneCapcodeInput)) {
     case PCSGNumberFieldTxFrequency:
@@ -31,6 +39,8 @@ static uint32_t* pocsag_pager_scene_capcode_input_field(POCSAGPagerApp* app) {
         return &app->filter.ric_max;
     case PCSGNumberFieldFreqPpm:
         return (uint32_t*)&app->filter.freq_correction_ppm;
+    case PCSGNumberFieldTxCorrection:
+        return (uint32_t*)&app->tx_config.frequency_correction_hz;
     default:
         return &app->filter.capcode_min;
     }
@@ -47,6 +57,9 @@ static void pocsag_pager_scene_capcode_input_callback(void* context, int32_t num
         // Outside every band the radio will tune: keep what was there.
         notification_message(app->notifications, &sequence_error);
     } else {
+        if(field == PCSGNumberFieldTxCorrection) {
+            number = pocsag_pager_scene_capcode_input_round(number);
+        }
         *pocsag_pager_scene_capcode_input_field(app) = number;
         // Retune on returning to the receiver, as changing the channel does.
         if(field == PCSGNumberFieldRxFrequency) app->txrx->rx_restart = true;
@@ -81,6 +94,11 @@ void pocsag_pager_scene_capcode_input_on_enter(void* context) {
         header = "ppm +/-";
         min = -PCSG_FREQ_PPM_MAX;
         max = PCSG_FREQ_PPM_MAX;
+        break;
+    case PCSGNumberFieldTxCorrection:
+        header = "TX corr, Hz +/-";
+        min = PCSG_TX_CORRECTION_MIN_HZ;
+        max = PCSG_TX_CORRECTION_MAX_HZ;
         break;
     case PCSGNumberFieldCapcodeMax:
         header = "Capcode max";
