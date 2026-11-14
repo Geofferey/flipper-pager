@@ -54,7 +54,7 @@ bool pocsag_tx_encoder_prepare(PocsagTxEncoder* encoder, const PocsagTxConfig* c
 
     const size_t message_length = strnlen(config->message, sizeof(config->message));
     if(config->protocol != PagerTxProtocolPocsag || message_length == 0U ||
-       message_length > PCSG_TX_MAX_MESSAGE_LENGTH ||
+       message_length > PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH ||
        config->ric > PCSG_TX_RIC_MAX || config->function > 3U ||
        (config->baud != 512U && config->baud != 1200U && config->baud != 2400U)) {
         return false;

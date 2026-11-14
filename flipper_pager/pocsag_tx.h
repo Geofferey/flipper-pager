@@ -5,8 +5,14 @@
 #include <stdint.h>
 #include <toolbox/level_duration.h>
 
-#define PCSG_TX_MAX_MESSAGE_LENGTH 80U
-#define PCSG_TX_RIC_MAX            0x1FFFFFU
+/*
+ * Shared entry buffer. FLEX reaches the full length by splitting the message
+ * into fragments; POCSAG has no fragmentation and is bounded by the three
+ * batches its encoder emits, so it carries its own lower ceiling.
+ */
+#define PCSG_TX_MAX_MESSAGE_LENGTH        240U
+#define PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH 80U
+#define PCSG_TX_RIC_MAX                   0x1FFFFFU
 /*
  * Per-shot carrier nudge. Wide enough to cover a crystal error at the top of
  * the range: about 14 ppm reaches 13 kHz at 930 MHz, where the old 10 kHz

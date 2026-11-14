@@ -20,8 +20,41 @@
  */
 #define FLEX_TX_ERS_CYCLES     24U
 #define FLEX_TX_FRAME_BYTES    379U
+#define FLEX_TX_SYNC1_BYTES    14U
 #define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
-#define FLEX_TX_BUFFER_BYTES   (FLEX_TX_ERS_BYTES + FLEX_TX_FRAME_BYTES)
+
+/*
+ * A message longer than one page is split into fragments, each sent as its own
+ * frame in the same transmission, one acquisition burst covering them all. The
+ * frames are consecutive, as a network would send them, so the frame numbers
+ * step with the clock rather than repeating.
+ *
+ * Fragments are numbered 3 then 0, 1, 2, 0, ... and every one but the last
+ * sets continuation; the receiver joins them per capcode and message number.
+ */
+#define FLEX_TX_MAX_FRAGMENTS  3U
+#define FLEX_TX_FRAGMENT_CHARS (PCSG_TX_MAX_MESSAGE_LENGTH / FLEX_TX_MAX_FRAGMENTS)
+#define FLEX_TX_BUFFER_BYTES \
+    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FRAME_BYTES)
+
+/*
+ * Clock carried by the frame. Time of hour is not a field: FLEX derives it
+ * from where the frame sits in the cycle, so the FIW's cycle and frame numbers
+ * are the minutes and seconds, and only the hour needs a word of its own.
+ *
+ * Everything ahead of the FIW -- the acquisition burst and sync1 -- is airtime
+ * that passes before a receiver reads the clock, so it is added on, or the
+ * page would arrive describing when the buffer was built.
+ *
+ * FLEX runs on GPS time; the receiver takes the offset back off again. Keep in
+ * step with PCSG_GPS_UTC_OFFSET_S in pocsag_pager_time.c.
+ */
+#define FLEX_TX_PRE_FIW_MS \
+    (((FLEX_TX_ERS_BYTES + FLEX_TX_SYNC1_BYTES) * 8U * 1000U) / FLEX_TX_BAUD)
+#define FLEX_TX_GPS_UTC_OFFSET_S 18U
+#define FLEX_TX_FRAME_MS         1875U
+#define FLEX_TX_CYCLE_MS         240000U
+#define FLEX_TX_HOUR_MS          3600000U
 
 struct FlexTxEncoder {
     uint8_t bytes[FLEX_TX_BUFFER_BYTES];
@@ -78,6 +111,42 @@ static uint32_t flex_tx_biw1(uint8_t address_start, uint8_t vector_start) {
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
+/*
+ * Clock BIWs, mirroring flex_decode_clock() in protocols/flex.c: type 2 holds
+ * the hour, type 5 subfield 4 the zone, and the decoder needs both before it
+ * will treat the clock as usable. Fields neither side reads are left zero.
+ */
+static uint32_t flex_tx_biw_time(uint8_t hour) {
+    uint32_t word = (2U << 4) | ((uint32_t)(hour & 31U) << 7);
+    return flex_tx_encode_word(flex_tx_checksum(word));
+}
+
+static uint32_t flex_tx_biw_zone(void) {
+    // Bit 20 clear is daylight, which is what the hour word above is in.
+    uint32_t word = (5U << 4) | (4U << 7);
+    return flex_tx_encode_word(flex_tx_checksum(word));
+}
+
+// Where the frame lands in the hour once it is actually on the air.
+static void flex_tx_clock(uint8_t* cycle, uint8_t* frame, uint8_t* hour) {
+    DateTime datetime;
+    furi_hal_rtc_get_datetime(&datetime);
+
+    uint32_t ms = ((uint32_t)datetime.minute * 60U + datetime.second +
+                   FLEX_TX_GPS_UTC_OFFSET_S) *
+                      1000U +
+                  FLEX_TX_PRE_FIW_MS + (FLEX_TX_FRAME_MS / 2U);
+    uint32_t hours = datetime.hour;
+    if(ms >= FLEX_TX_HOUR_MS) {
+        ms -= FLEX_TX_HOUR_MS;
+        hours++;
+    }
+
+    *cycle = ms / FLEX_TX_CYCLE_MS;
+    *frame = (ms % FLEX_TX_CYCLE_MS) / FLEX_TX_FRAME_MS;
+    *hour = hours % 24U;
+}
+
 static uint32_t flex_tx_short_address(uint32_t capcode) {
     return flex_tx_encode_word((capcode + 0x8000U) & FLEX_TX_DATA_MASK);
 }
@@ -89,9 +158,26 @@ static uint32_t flex_tx_alpha_vector(uint8_t message_start, uint8_t message_word
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
+/*
+ * Signature over the whole message, not this fragment: the receiver sums the
+ * characters of every fragment it joins and checks the total against the one
+ * value carried in fragment 3. Fill characters are excluded, as there too.
+ */
+static uint8_t flex_tx_signature(const char* message, size_t length) {
+    uint32_t sum = 0;
+    for(size_t i = 0; i < length; i++) {
+        const uint8_t value = (uint8_t)message[i] & 0x7FU;
+        if(value != 0x03U) sum += value;
+    }
+    return (~sum) & 0x7FU;
+}
+
 static uint8_t flex_tx_encode_alpha(
     const char* message,
     size_t length,
+    uint8_t fragment,
+    bool continuation,
+    uint8_t signature,
     uint8_t message_number,
     bool retrieval,
     uint32_t* output,
@@ -99,35 +185,29 @@ static uint8_t flex_tx_encode_alpha(
     if(capacity < 2U) return 0;
 
     uint8_t count = 0;
-    output[count++] = (3U << 11) | ((uint32_t)(message_number & 0x3FU) << 13) |
+    output[count++] = ((uint32_t)(fragment & 0x03U) << 11) |
+                      ((uint32_t)continuation << 10) |
+                      ((uint32_t)(message_number & 0x3FU) << 13) |
                       ((uint32_t)retrieval << 19);
 
+    // Fragment 3 spends the first slot of its first data word on the
+    // signature; a continuation fragment carries a character there instead.
     size_t character = 0;
-    uint32_t word = 0;
-    uint8_t value = character < length ? (uint8_t)message[character++] & 0x7FU : 0x03U;
-    word |= (uint32_t)value << 7;
-    value = character < length ? (uint8_t)message[character++] & 0x7FU : 0x03U;
-    word |= (uint32_t)value << 14;
-    output[count++] = word;
-
-    while(character < length && count < capacity) {
-        word = 0;
-        for(uint8_t slot = 0; slot < 3U; slot++) {
-            value = character < length ? (uint8_t)message[character++] & 0x7FU : 0x03U;
+    uint32_t word = (fragment == 3U) ? (uint32_t)(signature & 0x7FU) : 0U;
+    uint8_t slot = (fragment == 3U) ? 1U : 0U;
+    while(count < capacity) {
+        while(slot < 3U) {
+            const uint8_t value =
+                character < length ? (uint8_t)message[character++] & 0x7FU : 0x03U;
             word |= (uint32_t)value << (slot * 7U);
+            slot++;
         }
         output[count++] = word;
+        if(character >= length) break;
+        word = 0;
+        slot = 0;
     }
     if(character < length) return 0;
-
-    uint32_t signature = 0;
-    for(uint8_t i = 1; i < count; i++) {
-        for(uint8_t slot = 0; slot < 3U; slot++) {
-            const uint8_t character_value = (output[i] >> (slot * 7U)) & 0x7FU;
-            if(character_value != 0x03U) signature += character_value;
-        }
-    }
-    output[1] = (output[1] & ~0x7FU) | ((~signature) & 0x7FU);
 
     uint32_t checksum = 0;
     for(uint8_t i = 0; i < count; i++) {
@@ -170,12 +250,31 @@ static void flex_tx_write_interleaved(uint8_t** output, const uint32_t words[8])
     }
 }
 
-static void flex_tx_write_frame(
+typedef struct {
+    uint8_t cycle;
+    uint8_t frame;
+    uint8_t hour;
+    uint8_t message_number;
+    uint8_t fragment;
+    bool continuation;
+    uint8_t signature;
+    const char* text;
+    size_t length;
+} FlexTxFrameSpec;
+
+// Steps to the next frame, carrying into the cycle and the hour.
+static void flex_tx_clock_advance(FlexTxFrameSpec* spec) {
+    if(++spec->frame < 128U) return;
+    spec->frame = 0U;
+    if(++spec->cycle < 15U) return;
+    spec->cycle = 0U;
+    spec->hour = (spec->hour + 1U) % 24U;
+}
+
+static bool flex_tx_write_frame(
     uint8_t** output,
     const PocsagTxConfig* config,
-    uint8_t cycle,
-    uint8_t frame,
-    uint8_t message_number,
+    const FlexTxFrameSpec* spec,
     bool retrieval) {
     static const uint8_t sync1[] = {
         0xAA, 0xAA, 0xAA, 0xAA, 0x78, 0xF3, 0x59,
@@ -183,27 +282,33 @@ static void flex_tx_write_frame(
     };
     static const uint8_t sync2[] = {0xAE, 0xD8, 0x45, 0x12, 0x7B};
     for(size_t i = 0; i < COUNT_OF(sync1); i++) *(*output)++ = sync1[i];
-    flex_tx_write_word(output, flex_tx_fiw(cycle, frame));
+    flex_tx_write_word(output, flex_tx_fiw(spec->cycle, spec->frame));
     for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
 
     uint32_t message_words[32];
-    const size_t message_length = strlen(config->message);
     const uint8_t message_word_count = flex_tx_encode_alpha(
-        config->message,
-        message_length,
-        message_number,
+        spec->text,
+        spec->length,
+        spec->fragment,
+        spec->continuation,
+        spec->signature,
+        spec->message_number,
         retrieval,
         message_words,
         COUNT_OF(message_words));
+    if(message_word_count == 0U) return false;
 
     uint32_t frame_words[FLEX_TX_PHASE_WORDS];
     for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
         frame_words[i] = (i & 1U) ? 0x00000000U : 0xFFFFFFFFU;
     }
-    const uint8_t address_start = 1U;
-    const uint8_t vector_start = 2U;
-    const uint8_t message_start = 3U;
+    // Words 1 and 2 are the clock; BIW1 points the address past them.
+    const uint8_t address_start = 3U;
+    const uint8_t vector_start = 4U;
+    const uint8_t message_start = 5U;
     frame_words[0] = flex_tx_biw1(address_start, vector_start);
+    frame_words[1] = flex_tx_biw_time(spec->hour);
+    frame_words[2] = flex_tx_biw_zone();
     frame_words[address_start] = flex_tx_short_address(config->ric);
     frame_words[vector_start] = flex_tx_alpha_vector(message_start, message_word_count);
     for(uint8_t i = 0; i < message_word_count; i++) {
@@ -214,6 +319,7 @@ static void flex_tx_write_frame(
         flex_tx_write_interleaved(output, &frame_words[block * 8U]);
     }
     for(uint8_t i = 0; i < 4U; i++) *(*output)++ = 0xAA;
+    return true;
 }
 
 FlexTxEncoder* flex_tx_encoder_alloc(void) {
@@ -237,11 +343,22 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
 
     DateTime datetime;
     furi_hal_rtc_get_datetime(&datetime);
-    const uint8_t cycle = datetime.minute / 4U;
-    const uint8_t frame = (config->ric / 16U) % 128U;
     uint8_t message_number =
         (datetime.second + datetime.minute * 7U + datetime.hour) & 0x3FU;
     if(message_number == 0U) message_number = 1U;
+
+    // The cycle and frame are the clock, so they come from it rather than the
+    // capcode: a frame number that disagreed with the clock words would be a
+    // page timestamped to a slot it was not sent in.
+    FlexTxFrameSpec spec = {
+        .message_number = message_number,
+        .signature = flex_tx_signature(config->message, message_length),
+    };
+    flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour);
+
+    const uint8_t fragments =
+        (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
+    if(fragments == 0U || fragments > FLEX_TX_MAX_FRAGMENTS) return false;
 
     /*
      * One acquisition burst and one frame. The page carries the retrieval
@@ -252,9 +369,18 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
      */
     uint8_t* output = encoder->bytes;
     flex_tx_write_ers(&output);
-    flex_tx_write_frame(&output, config, cycle, frame, message_number, true);
+    for(uint8_t i = 0; i < fragments; i++) {
+        const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
+        const size_t remaining = message_length - offset;
+        spec.fragment = (i == 0U) ? 3U : (uint8_t)((i - 1U) % 3U);
+        spec.continuation = (uint8_t)(i + 1U) < fragments;
+        spec.text = config->message + offset;
+        spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
+        if(!flex_tx_write_frame(&output, config, &spec, true)) return false;
+        flex_tx_clock_advance(&spec);
+    }
     encoder->byte_count = output - encoder->bytes;
-    furi_check(encoder->byte_count == sizeof(encoder->bytes));
+    furi_check(encoder->byte_count <= sizeof(encoder->bytes));
 
     encoder->bit_index = 0;
     encoder->inverted = config->inverted;

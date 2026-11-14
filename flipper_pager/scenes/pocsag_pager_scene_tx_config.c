@@ -279,6 +279,13 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
         return true;
     }
     if(event.event == PCSGTxConfigReview) {
+        // POCSAG cannot fragment, so it rejects what FLEX would have split.
+        const size_t length = strlen(app->tx_config.message);
+        if(app->tx_config.protocol == PagerTxProtocolPocsag &&
+           length > PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH) {
+            notification_message(app->notifications, &sequence_error);
+            return true;
+        }
         if(app->tx_config.message[0] == '\0') {
             notification_message(app->notifications, &sequence_error);
         } else {
