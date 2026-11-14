@@ -10,10 +10,20 @@ static void pocsag_pager_scene_tx_confirm_callback(
     }
 }
 
-static void pocsag_pager_scene_tx_confirm_show_result(POCSAGPagerApp* app, const char* text) {
+// A finished page keeps a button, so sending again costs one press instead of
+// a trip back through the config and review screens. The states that cannot
+// succeed on a retry pass NULL and leave Back as the only way on.
+static void pocsag_pager_scene_tx_confirm_show_result(
+    POCSAGPagerApp* app,
+    const char* text,
+    const char* button) {
     widget_reset(app->widget);
     widget_add_text_box_element(
         app->widget, 4, 18, 120, 32, AlignCenter, AlignCenter, text, false);
+    if(button) {
+        widget_add_button_element(
+            app->widget, GuiButtonTypeCenter, button, pocsag_pager_scene_tx_confirm_callback, app);
+    }
 }
 
 void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
@@ -84,15 +94,18 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
     if(event.type == SceneManagerEventTypeCustom && event.event == PCSGCustomEventTxSend) {
         const PCSGTxStartStatus status = pcsg_tx_start(app);
         if(status == PCSGTxStartOk) {
-            pocsag_pager_scene_tx_confirm_show_result(app, "\e#Transmitting...\e#\n\nBack cancels");
+            pocsag_pager_scene_tx_confirm_show_result(
+                app, "\e#Transmitting...\e#\n\nBack cancels", NULL);
             notification_message(app->notifications, &sequence_blink_magenta_10);
         } else if(status == PCSGTxStartRestricted) {
             pocsag_pager_scene_tx_confirm_show_result(
-                app, "\e#Transmission blocked\e#\n\nFrequency is restricted\nby region settings");
+                app,
+                "\e#Transmission blocked\e#\n\nFrequency is restricted\nby region settings",
+                NULL);
             notification_message(app->notifications, &sequence_error);
         } else {
             pocsag_pager_scene_tx_confirm_show_result(
-                app, "\e#Cannot transmit\e#\n\nCheck address, message,\nfrequency and mode");
+                app, "\e#Cannot transmit\e#\n\nCheck address, message,\nfrequency and mode", NULL);
             notification_message(app->notifications, &sequence_error);
         }
         return true;
@@ -103,7 +116,8 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
             app,
             app->tx_config.protocol == PagerTxProtocolFlex ?
                 "\e#FLEX page sent\e#" :
-                "\e#POCSAG page sent\e#");
+                "\e#POCSAG page sent\e#",
+            "Send again");
         notification_message(app->notifications, &sequence_success);
         return true;
     }
