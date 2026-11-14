@@ -435,7 +435,9 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     encoder->bit_index = 0;
     encoder->fast = config->flex_3200;
     encoder->inverted = config->inverted;
-    encoder->lead_in_pending = !config->inverted;
+    // The async timer starts high and drops a leading low run, which would
+    // cost the first burst bit. Only inverted polarity now starts low.
+    encoder->lead_in_pending = config->inverted;
     encoder->tail_pending = true;
     return true;
 }
@@ -487,6 +489,12 @@ LevelDuration flex_tx_encoder_yield(void* context) {
     }
     encoder->bit_index += run_bits;
 
-    const bool async_level = encoder->inverted ? wire_bit : !wire_bit;
+    /*
+     * Unlike POCSAG, FLEX bit 1 is the positive-deviation tone, and CC1101
+     * asynchronous input 1 already selects positive deviation, so standard
+     * polarity passes the bit straight through. This had POCSAG's inversion,
+     * which made the two settings mean each other's labels.
+     */
+    const bool async_level = encoder->inverted ? !wire_bit : wire_bit;
     return level_duration_make(async_level, flex_tx_bit_period(fast) * run_bits);
 }
