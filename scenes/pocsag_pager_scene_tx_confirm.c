@@ -43,8 +43,10 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             (unsigned long)magnitude);
     }
     // An empty message sends a tone-only page, so say so rather than show a gap.
-    const char* body =
-        app->tx_config.message[0] == '\0' ? "\e#Tone only\e#" : app->tx_config.message;
+    const char* body = app->tx_config.test_beacon ?
+                           "\e#TEST beacon\e#\nSync and clock BIWs, no pages,\nrepeating" :
+                       app->tx_config.message[0] == '\0' ? "\e#Tone only\e#" :
+                                                           app->tx_config.message;
     FuriString* text;
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
         text = furi_string_alloc_printf(
@@ -95,7 +97,11 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
         const PCSGTxStartStatus status = pcsg_tx_start(app);
         if(status == PCSGTxStartOk) {
             pocsag_pager_scene_tx_confirm_show_result(
-                app, "\e#Transmitting...\e#\n\nBack cancels", NULL);
+                app,
+                app->tx_config.test_beacon ?
+                    "\e#TEST beacon\e#\n\nSync and clock BIWs\nBack stops" :
+                    "\e#Transmitting...\e#\n\nBack cancels",
+                NULL);
             notification_message(app->notifications, &sequence_blink_magenta_10);
         } else if(status == PCSGTxStartRestricted) {
             pocsag_pager_scene_tx_confirm_show_result(
@@ -112,6 +118,15 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
     }
     if(event.type == SceneManagerEventTypeTick && pcsg_tx_complete(app)) {
         pcsg_tx_stop(app);
+        /*
+         * The beacon runs until Back. Each burst is built afresh, so its cycle
+         * and frame words describe the slot it actually goes out in rather
+         * than the one the first burst did. The screen is left alone so it
+         * does not flicker once a burst.
+         */
+        if(app->tx_config.test_beacon && pcsg_tx_start(app) == PCSGTxStartOk) {
+            return true;
+        }
         pocsag_pager_scene_tx_confirm_show_result(
             app,
             app->tx_config.protocol == PagerTxProtocolFlex ?

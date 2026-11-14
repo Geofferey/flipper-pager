@@ -344,10 +344,11 @@ static bool flex_tx_write_frame(
         for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
     }
 
-    const bool tone_only = spec->length == 0U;
+    const bool test = config->test_beacon;
+    const bool tone_only = !test && spec->length == 0U;
     uint32_t message_words[32];
     uint8_t message_word_count = 0;
-    if(!tone_only) {
+    if(!test && !tone_only) {
         message_word_count = flex_tx_encode_alpha(
             spec->text,
             spec->length,
@@ -365,19 +366,23 @@ static bool flex_tx_write_frame(
     for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
         frame_words[i] = (i & 1U) ? 0x00000000U : 0xFFFFFFFFU;
     }
-    // Words 1 and 2 are the clock; BIW1 points the address past them.
+    // Words 1 and 2 are the clock; BIW1 points the address past them. A test
+    // beacon starts the address field where the vector field starts, which is
+    // an empty one: sync and the clock, carrying no pages at all.
     const uint8_t address_start = 3U;
-    const uint8_t vector_start = 4U;
+    const uint8_t vector_start = test ? address_start : 4U;
     const uint8_t message_start = 5U;
     frame_words[0] = flex_tx_biw1(address_start, vector_start);
     frame_words[1] = flex_tx_biw_time(spec->hour);
     frame_words[2] = flex_tx_biw_zone();
-    frame_words[address_start] = flex_tx_short_address(config->ric);
-    frame_words[vector_start] = tone_only ?
-                                    flex_tx_tone_vector() :
-                                    flex_tx_alpha_vector(message_start, message_word_count);
-    for(uint8_t i = 0; i < message_word_count; i++) {
-        frame_words[message_start + i] = message_words[i];
+    if(!test) {
+        frame_words[address_start] = flex_tx_short_address(config->ric);
+        frame_words[vector_start] = tone_only ?
+                                        flex_tx_tone_vector() :
+                                        flex_tx_alpha_vector(message_start, message_word_count);
+        for(uint8_t i = 0; i < message_word_count; i++) {
+            frame_words[message_start + i] = message_words[i];
+        }
     }
 
     for(uint8_t block = 0; block < 11U; block++) {
@@ -426,9 +431,9 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     };
     flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour);
 
-    // Tone only is one frame with nothing to fragment.
+    // A tone-only page and a test beacon are one frame with nothing to split.
     const uint8_t fragments =
-        message_length == 0U ?
+        (config->test_beacon || message_length == 0U) ?
             1U :
             (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
     if(fragments > FLEX_TX_MAX_FRAGMENTS) return false;

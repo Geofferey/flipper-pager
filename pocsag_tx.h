@@ -29,6 +29,8 @@ typedef struct {
     bool inverted;
     /** FLEX only: 3200/2-level instead of 1600/2-level. */
     bool flex_3200;
+    /** FLEX only: beacon sync and clock BIWs with no pages. Not saved. */
+    bool test_beacon;
     char message[PCSG_TX_MAX_MESSAGE_LENGTH + 1U];
 } PocsagTxConfig;
 

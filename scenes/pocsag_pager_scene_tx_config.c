@@ -105,6 +105,41 @@ static void pocsag_pager_scene_tx_show_address(POCSAGPagerApp* app) {
 }
 
 /*
+ * The message row doubles as a mode picker: left and right choose between the
+ * typed message and TEST, which beacons sync and the clock BIWs with no pages
+ * behind them. Only FLEX has those, so POCSAG keeps the single choice.
+ */
+static void pocsag_pager_scene_tx_show_message(POCSAGPagerApp* app) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigMessage);
+    if(!item) return;
+    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
+    if(!flex) app->tx_config.test_beacon = false;
+
+    variable_item_set_values_count(item, flex ? 2U : 1U);
+    variable_item_set_current_value_index(item, app->tx_config.test_beacon ? 1U : 0U);
+    if(app->tx_config.test_beacon) {
+        variable_item_set_current_value_text(item, "TEST");
+        return;
+    }
+
+    char text[20];
+    const size_t length = strlen(app->tx_config.message);
+    if(length == 0U) {
+        snprintf(text, sizeof(text), "Tone only");
+    } else {
+        snprintf(text, sizeof(text), "%u chars", (unsigned)length);
+    }
+    variable_item_set_current_value_text(item, text);
+}
+
+static void pocsag_pager_scene_tx_set_message(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    app->tx_config.test_beacon = app->tx_config.protocol == PagerTxProtocolFlex &&
+                                 variable_item_get_current_value_index(item) != 0U;
+    pocsag_pager_scene_tx_show_message(app);
+}
+
+/*
  * Label, choice count and value of the address, function and baud rows all
  * depend on the protocol. on_enter adds those three as placeholders and calls
  * this, so the rules live here only, rather than once here and once there.
@@ -142,6 +177,8 @@ static void pocsag_pager_scene_tx_set_protocol(VariableItem* item) {
     variable_item_set_current_value_text(item, tx_protocol_text[app->tx_config.protocol]);
     pocsag_pager_scene_tx_clamp_address(app);
     pocsag_pager_scene_tx_show_protocol_options(app);
+    // TEST is FLEX only, so leaving FLEX has to drop it.
+    pocsag_pager_scene_tx_show_message(app);
 }
 
 static void pocsag_pager_scene_tx_set_function(VariableItem* item) {
@@ -191,7 +228,6 @@ static void pocsag_pager_scene_tx_enter_callback(void* context, uint32_t index) 
 void pocsag_pager_scene_tx_config_on_enter(void* context) {
     POCSAGPagerApp* app = context;
     VariableItem* item;
-    char text[20];
 
     pocsag_pager_scene_tx_clamp_address(app);
 
@@ -252,14 +288,9 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     // Show what is stored, not the index: a typed value need not be on the grid.
     pocsag_pager_scene_tx_show_correction(item, app->filter.frequency_correction_hz);
 
-    item = variable_item_list_add(app->variable_item_list, "Message:", 1, NULL, app);
-    const size_t message_length = strlen(app->tx_config.message);
-    if(message_length == 0U) {
-        snprintf(text, sizeof(text), "Tone only");
-    } else {
-        snprintf(text, sizeof(text), "%u chars", (unsigned)message_length);
-    }
-    variable_item_set_current_value_text(item, text);
+    variable_item_list_add(
+        app->variable_item_list, "Message:", 1, pocsag_pager_scene_tx_set_message, app);
+    pocsag_pager_scene_tx_show_message(app);
 
     item = variable_item_list_add(app->variable_item_list, "Review & send", 1, NULL, app);
     variable_item_set_current_value_text(item, ">");
@@ -292,12 +323,15 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
         return true;
     }
     if(event.event == PCSGTxConfigMessage) {
-        scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxMessageInput);
+        // Nothing to type in TEST: the beacon carries no message.
+        if(!app->tx_config.test_beacon) {
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxMessageInput);
+        }
         return true;
     }
     if(event.event == PCSGTxConfigReview) {
         // POCSAG cannot fragment, so it rejects what FLEX would have split.
-        const size_t length = strlen(app->tx_config.message);
+        const size_t length = app->tx_config.test_beacon ? 0U : strlen(app->tx_config.message);
         if(app->tx_config.protocol == PagerTxProtocolPocsag &&
            length > PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH) {
             notification_message(app->notifications, &sequence_error);
