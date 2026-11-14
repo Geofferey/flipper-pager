@@ -22,6 +22,19 @@
 #define FLEX_TX_FRAME_BYTES    379U
 #define FLEX_TX_SYNC1_BYTES    14U
 #define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
+/*
+ * 3200/2-level keeps the burst, sync1 and the FIW at 1600 -- a receiver has to
+ * read the mode out of sync1 before it can know any other rate -- and runs
+ * everything after them at twice that. sync2 is a fixed 25 ms, so it costs
+ * twice the bits, and the data carries phases A and C instead of A alone.
+ */
+#define FLEX_TX_FIW_BYTES   4U
+#define FLEX_TX_SYNC2_BYTES 5U
+#define FLEX_TX_TAIL_BYTES  4U
+#define FLEX_TX_HEAD_BYTES  (FLEX_TX_SYNC1_BYTES + FLEX_TX_FIW_BYTES)
+#define FLEX_TX_FAST_FRAME_BYTES                                    \
+    (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 2U + 11U * 64U +    \
+     FLEX_TX_TAIL_BYTES)
 
 /*
  * A message longer than one page is split into fragments, each sent as its own
@@ -35,7 +48,7 @@
 #define FLEX_TX_MAX_FRAGMENTS  3U
 #define FLEX_TX_FRAGMENT_CHARS (PCSG_TX_MAX_MESSAGE_LENGTH / FLEX_TX_MAX_FRAGMENTS)
 #define FLEX_TX_BUFFER_BYTES \
-    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FRAME_BYTES)
+    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FAST_FRAME_BYTES)
 
 /*
  * Clock carried by the frame. Time of hour is not a field: FLEX derives it
@@ -60,6 +73,7 @@ struct FlexTxEncoder {
     uint8_t bytes[FLEX_TX_BUFFER_BYTES];
     size_t byte_count;
     size_t bit_index;
+    bool fast;
     bool inverted;
     bool lead_in_pending;
     bool tail_pending;
@@ -250,6 +264,26 @@ static void flex_tx_write_interleaved(uint8_t** output, const uint32_t words[8])
     }
 }
 
+/*
+ * At 3200/2-level the frame carries phases A and C, one bit of each in turn.
+ * The page rides in A; C is left idle, and idle through the block interleaver
+ * is the alternating pattern, so its bit is simply the bit position's parity.
+ */
+static void flex_tx_write_woven(uint8_t** output, const uint32_t words[8]) {
+    uint8_t block[32];
+    uint8_t* cursor = block;
+    flex_tx_write_interleaved(&cursor, words);
+    for(uint8_t i = 0; i < sizeof(block); i++) {
+        uint16_t woven = 0;
+        for(uint8_t bit = 0; bit < 8U; bit++) {
+            const uint16_t a = (block[i] >> (7U - bit)) & 1U;
+            woven = (uint16_t)((woven << 2) | (a << 1) | ((bit & 1U) ? 0U : 1U));
+        }
+        *(*output)++ = (uint8_t)(woven >> 8);
+        *(*output)++ = (uint8_t)woven;
+    }
+}
+
 typedef struct {
     uint8_t cycle;
     uint8_t frame;
@@ -281,9 +315,21 @@ static bool flex_tx_write_frame(
         0x39, 0x55, 0x55, 0x87, 0x0C, 0xA6, 0xC6,
     };
     static const uint8_t sync2[] = {0xAE, 0xD8, 0x45, 0x12, 0x7B};
+    const bool fast = config->flex_3200;
+
+    uint8_t* const sync1_out = *output;
     for(size_t i = 0; i < COUNT_OF(sync1); i++) *(*output)++ = sync1[i];
+    if(fast) {
+        // Mode marker 0x7B18 and its inverse, in place of 1600/2's 0x870C.
+        sync1_out[4] = 0x84;
+        sync1_out[5] = 0xE7;
+        sync1_out[10] = 0x7B;
+        sync1_out[11] = 0x18;
+    }
     flex_tx_write_word(output, flex_tx_fiw(spec->cycle, spec->frame));
-    for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
+    for(uint8_t pass = 0; pass < (fast ? 2U : 1U); pass++) {
+        for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
+    }
 
     uint32_t message_words[32];
     const uint8_t message_word_count = flex_tx_encode_alpha(
@@ -316,7 +362,11 @@ static bool flex_tx_write_frame(
     }
 
     for(uint8_t block = 0; block < 11U; block++) {
-        flex_tx_write_interleaved(output, &frame_words[block * 8U]);
+        if(fast) {
+            flex_tx_write_woven(output, &frame_words[block * 8U]);
+        } else {
+            flex_tx_write_interleaved(output, &frame_words[block * 8U]);
+        }
     }
     for(uint8_t i = 0; i < 4U; i++) *(*output)++ = 0xAA;
     return true;
@@ -383,6 +433,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     furi_check(encoder->byte_count <= sizeof(encoder->bytes));
 
     encoder->bit_index = 0;
+    encoder->fast = config->flex_3200;
     encoder->inverted = config->inverted;
     encoder->lead_in_pending = !config->inverted;
     encoder->tail_pending = true;
@@ -393,31 +444,49 @@ static bool flex_tx_wire_bit(const FlexTxEncoder* encoder, size_t bit_index) {
     return (encoder->bytes[bit_index / 8U] >> (7U - (bit_index % 8U))) & 1U;
 }
 
+// Frames are a fixed size, so where a bit sits in one decides its rate. The
+// tail is slow again: the decoder is back to hunting sync by then.
+static bool flex_tx_bit_is_fast(const FlexTxEncoder* encoder, size_t bit_index) {
+    if(!encoder->fast) return false;
+    const size_t byte = bit_index / 8U;
+    if(byte < FLEX_TX_ERS_BYTES) return false;
+    const size_t into = (byte - FLEX_TX_ERS_BYTES) % FLEX_TX_FAST_FRAME_BYTES;
+    return into >= FLEX_TX_HEAD_BYTES &&
+           into < FLEX_TX_FAST_FRAME_BYTES - FLEX_TX_TAIL_BYTES;
+}
+
+static uint32_t flex_tx_bit_period(bool fast) {
+    return 1000000U / (fast ? FLEX_TX_FAST_BAUD : FLEX_TX_BAUD);
+}
+
 LevelDuration flex_tx_encoder_yield(void* context) {
     furi_assert(context);
     FlexTxEncoder* encoder = context;
     if(encoder->lead_in_pending) {
         encoder->lead_in_pending = false;
-        return level_duration_make(true, 1000000U / FLEX_TX_BAUD);
+        return level_duration_make(true, flex_tx_bit_period(false));
     }
 
     const size_t total_bits = encoder->byte_count * 8U;
     if(encoder->bit_index >= total_bits) {
         if(encoder->tail_pending) {
             encoder->tail_pending = false;
-            return level_duration_make(!encoder->inverted, 1000000U / FLEX_TX_BAUD);
+            return level_duration_make(!encoder->inverted, flex_tx_bit_period(false));
         }
         return level_duration_reset();
     }
 
+    // A run cannot straddle the rate change, so it ends there as well.
     const bool wire_bit = flex_tx_wire_bit(encoder, encoder->bit_index);
+    const bool fast = flex_tx_bit_is_fast(encoder, encoder->bit_index);
     size_t run_bits = 1U;
     while(encoder->bit_index + run_bits < total_bits &&
-          flex_tx_wire_bit(encoder, encoder->bit_index + run_bits) == wire_bit) {
+          flex_tx_wire_bit(encoder, encoder->bit_index + run_bits) == wire_bit &&
+          flex_tx_bit_is_fast(encoder, encoder->bit_index + run_bits) == fast) {
         run_bits++;
     }
     encoder->bit_index += run_bits;
 
     const bool async_level = encoder->inverted ? wire_bit : !wire_bit;
-    return level_duration_make(async_level, (1000000U / FLEX_TX_BAUD) * run_bits);
+    return level_duration_make(async_level, flex_tx_bit_period(fast) * run_bits);
 }

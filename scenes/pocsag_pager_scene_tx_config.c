@@ -17,6 +17,7 @@ static const char* const tx_baud_text[] = {"512", "1200", "2400"};
 static const char* const tx_protocol_text[] = {"POCSAG", "FLEX"};
 static const char* const tx_function_text[] = {"0", "1", "2", "3"};
 static const char* const tx_polarity_text[] = {"Standard", "Inverted"};
+static const char* const tx_flex_mode_text[] = {"1600/2FSK", "3200/2FSK"};
 
 #define PCSG_TX_CORRECTION_COUNT                                                   \
     ((PCSG_TX_CORRECTION_LIST_MAX_HZ * 2) / PCSG_TX_CORRECTION_STEP_HZ + 1)
@@ -122,10 +123,12 @@ static void pocsag_pager_scene_tx_show_protocol_options(POCSAGPagerApp* app) {
         function, flex ? "N/A" : tx_function_text[app->tx_config.function]);
 
     variable_item_set_item_label(baud, flex ? "Mode:" : "Baud:");
-    variable_item_set_values_count(baud, flex ? 1U : COUNT_OF(tx_baud_values));
+    variable_item_set_values_count(
+        baud, flex ? COUNT_OF(tx_flex_mode_text) : COUNT_OF(tx_baud_values));
     if(flex) {
-        variable_item_set_current_value_index(baud, 0);
-        variable_item_set_current_value_text(baud, "1600/2FSK");
+        const uint8_t mode_index = app->tx_config.flex_3200 ? 1U : 0U;
+        variable_item_set_current_value_index(baud, mode_index);
+        variable_item_set_current_value_text(baud, tx_flex_mode_text[mode_index]);
     } else {
         const uint8_t baud_index = pocsag_pager_scene_tx_baud_index(app->tx_config.baud);
         variable_item_set_current_value_index(baud, baud_index);
@@ -155,8 +158,9 @@ static void pocsag_pager_scene_tx_set_function(VariableItem* item) {
 static void pocsag_pager_scene_tx_set_baud(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, "1600/2FSK");
+        const uint8_t mode_index = variable_item_get_current_value_index(item);
+        app->tx_config.flex_3200 = mode_index != 0U;
+        variable_item_set_current_value_text(item, tx_flex_mode_text[mode_index]);
         return;
     }
     const uint8_t index = variable_item_get_current_value_index(item);

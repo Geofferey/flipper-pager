@@ -36,13 +36,14 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
         text = furi_string_alloc_printf(
             "\e#Transmit FLEX?\e#\n"
-            "%lu.%04lu MHz | 1600/2FSK\n"
+            "%lu.%04lu MHz | %s\n"
             "Capcode %lu\n"
             "%s polarity | Correction %s\n\n"
             "%s\n\n"
             "Only transmit where authorized.",
             app->tx_config.frequency / 1000000U,
             (app->tx_config.frequency % 1000000U) / 100U,
+            app->tx_config.flex_3200 ? "3200/2FSK" : "1600/2FSK",
             app->tx_config.ric,
             app->tx_config.inverted ? "Inverted" : "Standard",
             correction,

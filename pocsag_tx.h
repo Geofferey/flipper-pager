@@ -44,6 +44,8 @@ typedef struct {
     uint16_t baud;
     uint8_t function;
     bool inverted;
+    /** FLEX only: 3200/2-level instead of 1600/2-level. */
+    bool flex_3200;
     int32_t frequency_correction_hz;
     char message[PCSG_TX_MAX_MESSAGE_LENGTH + 1U];
 } PocsagTxConfig;

@@ -5,6 +5,7 @@
 #define FLEX_TX_SHORT_CAPCODE_MIN 1U
 #define FLEX_TX_SHORT_CAPCODE_MAX 1933312U
 #define FLEX_TX_BAUD              1600U
+#define FLEX_TX_FAST_BAUD         3200U
 
 typedef struct FlexTxEncoder FlexTxEncoder;
 

@@ -157,6 +157,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxFunction", 3U, PCSG_FIELD(tx_config.function), PCSGSetU32},
     {"TxBaud", 0, PCSG_FIELD(tx_config.baud), PCSGSetBaud},
     {"TxInverted", 0, PCSG_FIELD(tx_config.inverted), PCSGSetBool},
+    {"TxFlex3200", 0, PCSG_FIELD(tx_config.flex_3200), PCSGSetBool},
     {"TxCorrection",
      PCSG_TX_CORRECTION_MAX_HZ,
      PCSG_FIELD(tx_config.frequency_correction_hz),
