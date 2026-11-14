@@ -23,13 +23,13 @@
 #define FLEX_TX_SYNC1_BYTES    14U
 #define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
 /*
- * The test beacon repeats, so a receiver has many chances at it and only the
- * first needs a cold start: 240 ms of runway rather than 1.44 s, which also
- * tightens the gap between bursts. sync1 carries 32 bits of its own bit sync
- * after this, so even a cold DPLL has something to pull on.
+ * The test beacon carries no acquisition burst at all. It repeats, so only
+ * the first of them is ever a cold start, and sync1 opens with 32 bits of bit
+ * sync of its own, which is where the sync pattern is matched from in any
+ * case. Raise this if a receiver cannot take the first burst; every length
+ * that depends on it is derived, so the number is the only thing to change.
  */
-#define FLEX_TX_TEST_ERS_CYCLES 4U
-#define FLEX_TX_TEST_ERS_BYTES  (FLEX_TX_TEST_ERS_CYCLES * 12U)
+#define FLEX_TX_TEST_ERS_CYCLES 0U
 /*
  * 3200/2-level keeps the burst, sync1 and the FIW at 1600 -- a receiver has to
  * read the mode out of sync1 before it can know any other rate -- and runs
