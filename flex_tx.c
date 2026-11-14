@@ -166,13 +166,15 @@ static uint32_t flex_tx_short_address(uint32_t capcode) {
 }
 
 /*
- * A tone-only page is carried entirely by its vector word. Bits 7-8 left at
- * zero would announce three BCD digits in the rest of it; non-zero is the
- * plain alert, which flex_parse_tone() in protocols/flex.c reads as "Tone
- * only".
+ * A tone-only page is carried entirely by its vector word: bits 7-8 clear and
+ * the three BCD nibbles above them all 0xC, the fill code. That is what
+ * Mayhem's FLEX RX requires before it calls a page TONE, in
+ * FlexProcessor::decode_phase -- t == 0 && d == 0xCCC. Bits 7-8 set instead
+ * select the source-digit form there, which reads back as "SRC 0".
+ * https://github.com/portapack-mayhem/mayhem-firmware/blob/next/firmware/baseband/proc_flex.cpp
  */
 static uint32_t flex_tx_tone_vector(void) {
-    const uint32_t word = (2U << 4) | (1U << 7);
+    const uint32_t word = (2U << 4) | (0xCCCU << 9);
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 

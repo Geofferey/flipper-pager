@@ -610,7 +610,11 @@ static bool flex_parse_tone(
     static const char flex_bcd[] = "0123456789 U -][";
     furi_string_set_str(instance->generic.result_msg, "TON: ");
 
-    if(((vector >> 7) & 0x03) == 0) {
+    // Three fill nibbles and no source field is the plain alert; spelling it
+    // out beats printing the three blanks the fill code maps to.
+    if(((vector >> 7) & 0x03) == 0 && ((vector >> 9) & 0x0FFFU) == 0xCCCU && !long_data) {
+        furi_string_cat_str(instance->generic.result_msg, "Tone only");
+    } else if(((vector >> 7) & 0x03) == 0) {
         for(uint8_t shift = 9; shift <= 17; shift += 4) {
             furi_string_push_back(instance->generic.result_msg, flex_bcd[(vector >> shift) & 0x0F]);
         }
