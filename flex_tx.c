@@ -2,6 +2,39 @@
 
 #include <furi.h>
 #include <furi_hal.h>
+#include <flipper_application/api_hashtable/api_hashtable.h>
+#include <flipper_application/elf/elf_api_interface.h>
+
+/*
+ * furi_hal_subghz_write_reg(), resolved by name instead of linked against. An
+ * unresolved import stops the whole app loading, so asking the firmware's own
+ * symbol table at runtime is what lets one build serve both firmwares.
+ */
+typedef void (*FlexTxWriteReg)(uint8_t reg, uint8_t value);
+
+// Exported by the firmware but not declared in any header it ships, so apps
+// that want the symbol table declare it themselves, as the plugin examples do.
+extern const ElfApiInterface* const firmware_api_interface;
+
+static FlexTxWriteReg flex_tx_write_reg(void) {
+    static FlexTxWriteReg resolved = NULL;
+    static bool looked_up = false;
+    if(!looked_up) {
+        looked_up = true;
+        Elf32_Addr address = 0;
+        if(elf_resolve_from_hashtable(
+               firmware_api_interface,
+               elf_symbolname_hash("furi_hal_subghz_write_reg"),
+               &address)) {
+            resolved = (FlexTxWriteReg)address;
+        }
+    }
+    return resolved;
+}
+
+bool flex_tx_four_level_supported(void) {
+    return flex_tx_write_reg() != NULL;
+}
 
 #define FLEX_TX_BCH_POLYNOMIAL 0x769U
 #define FLEX_TX_DATA_MASK      0x1FFFFFU

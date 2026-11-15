@@ -21,5 +21,14 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
  *  next beacon burst is due. Valid until the encoder is freed. */
 uint8_t flex_tx_encoder_frames(const FlexTxEncoder* encoder);
 
+/*
+ * Four-level FLEX needs the radio's deviation shifted between symbols, which
+ * means writing one CC1101 register while it is transmitting. Firmware that
+ * exports furi_hal_subghz_write_reg can do that; older firmware cannot, and
+ * the symbol is looked up by name rather than linked, so this app still loads
+ * there - it just does not offer the mode. See README.md.
+ */
+bool flex_tx_four_level_supported(void);
+
 /** Callback consumed by the Sub-GHz asynchronous transmitter. */
 LevelDuration flex_tx_encoder_yield(void* context);

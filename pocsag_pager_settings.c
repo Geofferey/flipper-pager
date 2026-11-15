@@ -164,6 +164,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxClockBiws", PCSG_TX_CLOCK_BOTH, PCSG_FIELD(tx_config.clock_biws), PCSGSetU32},
     {"TxUtcCode", PCSG_TX_UTC_CODE_MAX, PCSG_FIELD(tx_config.utc_code), PCSGSetU32},
     {"TxDst", 0, PCSG_FIELD(tx_config.dst), PCSGSetBool},
+    {"TxFlex4Lvl", 0, PCSG_FIELD(tx_config.flex_4level), PCSGSetBool},
 };
 
 static uint32_t pcsg_setting_get(const POCSAGPagerApp* app, const PCSGSetting* setting) {

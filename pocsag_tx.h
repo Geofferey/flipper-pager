@@ -75,6 +75,8 @@ typedef struct {
     bool inverted;
     /** FLEX only: 3200/2-level instead of 1600/2-level. */
     bool flex_3200;
+    /** FLEX only, and only with flex_3200: 3200 bps as 1600 baud four-level. */
+    bool flex_4level;
     /** FLEX only: which clock BIWs to send, PCSG_TX_CLOCK_* as a bit each. */
     uint8_t clock_biws;
     /** FLEX only: the zone word's UTC code, sent with the time BIW. */
