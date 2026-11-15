@@ -396,7 +396,7 @@ static bool flex_tx_write_frame(
         for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
     }
 
-    const bool test = config->test_beacon;
+    const bool test = config->message_mode == PagerTxMessageTestBeacon;
     const bool tone_only = !test && spec->length == 0U;
     uint32_t message_words[32];
     uint8_t message_word_count = 0;
@@ -459,6 +459,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     furi_assert(encoder);
     furi_assert(config);
 
+    const bool test = config->message_mode == PagerTxMessageTestBeacon;
     const size_t message_length = strnlen(config->message, sizeof(config->message));
     // An empty message is a tone-only page, not a refusal.
     if(config->protocol != PagerTxProtocolFlex ||
@@ -480,13 +481,12 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         .message_number = message_number,
         .signature = flex_tx_signature(config->message, message_length),
     };
-    const size_t lead_bytes =
-        config->test_beacon ? FLEX_TX_TEST_PREAMBLE_BYTES : FLEX_TX_ERS_BYTES;
+    const size_t lead_bytes = test ? FLEX_TX_TEST_PREAMBLE_BYTES : FLEX_TX_ERS_BYTES;
     flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(lead_bytes));
 
     // A tone-only page and a test beacon are one frame with nothing to split.
     const uint8_t fragments =
-        (config->test_beacon || message_length == 0U) ?
+        (test || message_length == 0U) ?
             1U :
             (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
     if(fragments > FLEX_TX_MAX_FRAGMENTS) return false;
@@ -499,7 +499,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
      * a repeat apart, so repeating is not required of a sender.
      */
     uint8_t* output = encoder->bytes;
-    if(config->test_beacon) {
+    if(test) {
         flex_tx_write_preamble(&output, FLEX_TX_TEST_PREAMBLE_BITS);
     } else {
         flex_tx_write_ers(&output, FLEX_TX_ERS_CYCLES);

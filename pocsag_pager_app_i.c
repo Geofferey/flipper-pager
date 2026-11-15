@@ -217,15 +217,30 @@ PCSGTxStartStatus pcsg_tx_start(POCSAGPagerApp* app) {
         return PCSGTxStartInvalid;
     }
 
+    /*
+     * Sequence mode renders its body here rather than into the stored message,
+     * so a typed message survives a trip through the mode and back.
+     */
+    const PocsagTxConfig* config = &app->tx_config;
+    PocsagTxConfig sequence;
+    if(config->message_mode == PagerTxMessageSequence) {
+        sequence = *config;
+        snprintf(
+            sequence.message,
+            sizeof(sequence.message),
+            PCSG_TX_SEQUENCE_FORMAT,
+            config->sequence_number);
+        config = &sequence;
+    }
+
     bool prepared;
     if(flex) {
         app->flex_tx_encoder = flex_tx_encoder_alloc();
-        prepared = app->flex_tx_encoder &&
-                   flex_tx_encoder_prepare(app->flex_tx_encoder, &app->tx_config);
+        prepared =
+            app->flex_tx_encoder && flex_tx_encoder_prepare(app->flex_tx_encoder, config);
     } else {
         app->tx_encoder = pocsag_tx_encoder_alloc();
-        prepared = app->tx_encoder &&
-                   pocsag_tx_encoder_prepare(app->tx_encoder, &app->tx_config);
+        prepared = app->tx_encoder && pocsag_tx_encoder_prepare(app->tx_encoder, config);
     }
     if(!prepared) {
         pcsg_tx_release_encoder(app);

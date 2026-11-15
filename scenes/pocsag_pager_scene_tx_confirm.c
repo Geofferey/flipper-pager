@@ -53,10 +53,17 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             (unsigned long)magnitude);
     }
     // An empty message sends a tone-only page, so say so rather than show a gap.
-    const char* body = app->tx_config.test_beacon ?
-                           "\e#TEST beacon\e#\nSync and clock BIWs, no pages,\nrepeating" :
-                       app->tx_config.message[0] == '\0' ? "\e#Tone only\e#" :
-                                                           app->tx_config.message;
+    char sequence[PCSG_TX_SEQUENCE_CHARS];
+    const char* body;
+    if(app->tx_config.message_mode == PagerTxMessageTestBeacon) {
+        body = "\e#TEST beacon\e#\nSync and clock BIWs, no pages,\nrepeating";
+    } else if(app->tx_config.message_mode == PagerTxMessageSequence) {
+        snprintf(
+            sequence, sizeof(sequence), PCSG_TX_SEQUENCE_FORMAT, app->tx_config.sequence_number);
+        body = sequence;
+    } else {
+        body = app->tx_config.message[0] == '\0' ? "\e#Tone only\e#" : app->tx_config.message;
+    }
     FuriString* text;
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
         text = furi_string_alloc_printf(
@@ -109,7 +116,7 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
             app->tx_burst_tick = furi_get_tick();
             pocsag_pager_scene_tx_confirm_show_result(
                 app,
-                app->tx_config.test_beacon ?
+                app->tx_config.message_mode == PagerTxMessageTestBeacon ?
                     "\e#TEST beacon\e#\n\nSync and clock BIWs\nBack stops" :
                     "\e#Transmitting...\e#\n\nBack cancels",
                 NULL);
@@ -153,8 +160,29 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
          * frame words describing a slot that has already passed. The screen is
          * left alone so it does not flicker once a burst.
          */
-        if(app->tx_config.test_beacon) {
+        if(app->tx_config.message_mode == PagerTxMessageTestBeacon) {
             app->tx_pause_pending = true;
+            return true;
+        }
+        /*
+         * Sequence counts up once per page sent, not once per press, so a send
+         * that failed or was cancelled does not skip a number. The screen shows
+         * the number that just went out and the button the one that follows.
+         */
+        if(app->tx_config.message_mode == PagerTxMessageSequence) {
+            char sent[48];
+            char next[16];
+            snprintf(
+                sent,
+                sizeof(sent),
+                "\e#Page sent\e#\n\nSequential number %04u",
+                app->tx_config.sequence_number);
+            if(++app->tx_config.sequence_number > PCSG_TX_SEQUENCE_MAX) {
+                app->tx_config.sequence_number = 1U;
+            }
+            snprintf(next, sizeof(next), "Send %04u", app->tx_config.sequence_number);
+            pocsag_pager_scene_tx_confirm_show_result(app, sent, next);
+            notification_message(app->notifications, &sequence_success);
             return true;
         }
         pocsag_pager_scene_tx_confirm_show_result(

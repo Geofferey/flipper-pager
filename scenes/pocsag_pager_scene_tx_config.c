@@ -106,36 +106,43 @@ static void pocsag_pager_scene_tx_show_address(POCSAGPagerApp* app) {
 
 /*
  * The message row doubles as a mode picker: left and right choose between the
- * typed message and TEST, which beacons sync and the clock BIWs with no pages
- * behind them. Only FLEX has those, so POCSAG keeps the single choice.
+ * typed message, SEQ, which sends a numbered test page and counts up a number
+ * on every send, and TEST, which beacons sync and the clock BIWs with no pages
+ * behind them. Only FLEX has those BIWs, so POCSAG stops one choice short.
  */
 static void pocsag_pager_scene_tx_show_message(POCSAGPagerApp* app) {
     VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigMessage);
     if(!item) return;
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    if(!flex) app->tx_config.test_beacon = false;
+    if(!flex && app->tx_config.message_mode == PagerTxMessageTestBeacon) {
+        app->tx_config.message_mode = PagerTxMessageTyped;
+    }
 
-    variable_item_set_values_count(item, flex ? 2U : 1U);
-    variable_item_set_current_value_index(item, app->tx_config.test_beacon ? 1U : 0U);
-    if(app->tx_config.test_beacon) {
+    variable_item_set_values_count(
+        item, flex ? PagerTxMessageModeCount : PagerTxMessageModeCount - 1U);
+    variable_item_set_current_value_index(item, app->tx_config.message_mode);
+    if(app->tx_config.message_mode == PagerTxMessageTestBeacon) {
         variable_item_set_current_value_text(item, "TEST");
         return;
     }
 
     char text[20];
-    const size_t length = strlen(app->tx_config.message);
-    if(length == 0U) {
-        snprintf(text, sizeof(text), "Tone only");
+    if(app->tx_config.message_mode == PagerTxMessageSequence) {
+        snprintf(text, sizeof(text), "SEQ %04u", app->tx_config.sequence_number);
     } else {
-        snprintf(text, sizeof(text), "%u chars", (unsigned)length);
+        const size_t length = strlen(app->tx_config.message);
+        if(length == 0U) {
+            snprintf(text, sizeof(text), "Tone only");
+        } else {
+            snprintf(text, sizeof(text), "%u chars", (unsigned)length);
+        }
     }
     variable_item_set_current_value_text(item, text);
 }
 
 static void pocsag_pager_scene_tx_set_message(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
-    app->tx_config.test_beacon = app->tx_config.protocol == PagerTxProtocolFlex &&
-                                 variable_item_get_current_value_index(item) != 0U;
+    app->tx_config.message_mode = variable_item_get_current_value_index(item);
     pocsag_pager_scene_tx_show_message(app);
 }
 
@@ -323,15 +330,21 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
         return true;
     }
     if(event.event == PCSGTxConfigMessage) {
-        // Nothing to type in TEST: the beacon carries no message.
-        if(!app->tx_config.test_beacon) {
+        // Only the typed mode has anything to type: SEQ and TEST build their own.
+        if(app->tx_config.message_mode == PagerTxMessageTyped) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxMessageInput);
         }
         return true;
     }
     if(event.event == PCSGTxConfigReview) {
         // POCSAG cannot fragment, so it rejects what FLEX would have split.
-        const size_t length = app->tx_config.test_beacon ? 0U : strlen(app->tx_config.message);
+        // "%04u" is as wide as the digits it prints, so the format is the body.
+        const size_t length =
+            app->tx_config.message_mode == PagerTxMessageTyped ?
+                strlen(app->tx_config.message) :
+            app->tx_config.message_mode == PagerTxMessageSequence ?
+                strlen(PCSG_TX_SEQUENCE_FORMAT) :
+                0U;
         if(app->tx_config.protocol == PagerTxProtocolPocsag &&
            length > PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH) {
             notification_message(app->notifications, &sequence_error);
