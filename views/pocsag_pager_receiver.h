@@ -31,6 +31,13 @@ void pcsg_view_receiver_add_data_statusbar(
     const char* preset_str,
     const char* history_stat_str);
 
+/** The network clock for the status bar, and which of the two to show. An empty
+ *  or NULL string leaves the frequency line up whatever `show` asks for. */
+void pcsg_view_receiver_set_clock(
+    PCSGReceiver* pcsg_receiver,
+    const char* time_str,
+    bool show);
+
 /** Fills a list row's label and icon type; the view keeps no copies. */
 typedef void (*PCSGReceiverItemCallback)(
     void* context,

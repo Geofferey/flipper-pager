@@ -6,39 +6,77 @@
 #define PCSG_TIME_SYNC_MIN_ADJUST_S 2
 #define PCSG_GPS_UTC_OFFSET_S 18U
 
+/*
+ * Where one frame's timing puts the network clock: the return is seconds into
+ * the UTC hour, and `hour`, when asked for, the network's own local hour. That
+ * hour only means anything once the clock words have arrived.
+ *
+ * The RTC sync and the receiver's status bar both need this, so it lives here
+ * rather than in each of them.
+ */
+static uint32_t
+    pcsg_time_frame_second(const FlexFrameTiming* timing, uint32_t age_ms, uint8_t* hour) {
+    // FIW publication marks this frame's start; elapsed time includes reception.
+    const uint32_t gps_seconds =
+        ((uint32_t)timing->cycle * 240000U + (uint32_t)timing->frame * 1875U + age_ms + 500U) /
+        1000U;
+    const uint32_t gps_second = gps_seconds % 3600U;
+    if(hour) {
+        // BIW hour uses daylight time year-round; set L0 means standard time.
+        *hour = (timing->hour + gps_seconds / 3600U + 24U - timing->standard_time -
+                 (gps_second < PCSG_GPS_UTC_OFFSET_S)) %
+                24U;
+    }
+    return (gps_second + 3600U - PCSG_GPS_UTC_OFFSET_S) % 3600U;
+}
+
+// Common gate: FLEX reception with frame timing recent enough to extrapolate.
+static bool pcsg_time_frame(POCSAGPagerApp* app, FlexFrameTiming* timing, uint32_t* age_ms) {
+    if(app->txrx->txrx_state != PCSGTxRxStateRx) return false;
+    if(strncmp(furi_string_get_cstr(app->txrx->preset->name), "FLEX", 4) != 0) return false;
+    if(!flex_sampler_get_frame_timing(app->txrx->flex_sampler, timing)) return false;
+    const uint32_t age_ticks = furi_get_tick() - timing->tick;
+    if(age_ticks > furi_ms_to_ticks(PCSG_TIME_SYNC_MAX_AGE_MS)) return false;
+    // The five-second limit above is at most 5000 ticks on Flipper.
+    *age_ms = age_ticks * 1000U / furi_kernel_get_tick_frequency();
+    return true;
+}
+
+bool pcsg_time_network(POCSAGPagerApp* app, uint8_t* hour, uint8_t* minute, uint8_t* second) {
+    furi_assert(app);
+    FlexFrameTiming timing;
+    uint32_t age_ms;
+    if(!pcsg_time_frame(app, &timing, &age_ms)) return false;
+    // Without the clock words there is no hour to show, only a frame position.
+    if(timing.chase || !timing.clock_valid) return false;
+    const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, hour);
+    *minute = sec / 60U;
+    *second = sec % 60U;
+    return true;
+}
+
 // Adapted from Mayhem FLEX RX's network_hour/update_rtc; keep the RTC date:
 // https://github.com/Geofferey/mayhem-firmware/blob/67345f64389694e45d1873587a0f052c4baed8e5/firmware/application/external/flex_rx/ui_flex_rx.cpp
 void pcsg_time_sync(POCSAGPagerApp* app) {
-    if(app->filter.time_sync == PCSGTimeSyncOff ||
-       app->txrx->txrx_state != PCSGTxRxStateRx) return;
-    if(strncmp(furi_string_get_cstr(app->txrx->preset->name), "FLEX", 4) != 0) return;
+    if(app->filter.time_sync == PCSGTimeSyncOff) return;
 
     FlexFrameTiming timing;
-    if(!flex_sampler_get_frame_timing(app->txrx->flex_sampler, &timing) ||
-       timing.sequence == app->time_sync_sequence) return;
+    uint32_t age_ms;
+    if(!pcsg_time_frame(app, &timing, &age_ms)) return;
+    if(timing.sequence == app->time_sync_sequence) return;
     app->time_sync_sequence = timing.sequence;
     if(timing.chase) return;
-    const uint32_t age_ticks = furi_get_tick() - timing.tick;
-    if(age_ticks > furi_ms_to_ticks(PCSG_TIME_SYNC_MAX_AGE_MS)) return;
 
     const bool full = app->filter.time_sync == PCSGTimeSyncFull && timing.clock_valid;
-    // The five-second limit above is at most 5000 ticks on Flipper.
-    const uint32_t age_ms = age_ticks * 1000U / furi_kernel_get_tick_frequency();
-    // FIW publication marks this frame's start; elapsed time includes reception.
-    const uint32_t gps_seconds =
-        ((uint32_t)timing.cycle * 240000U + (uint32_t)timing.frame * 1875U + age_ms + 500U) / 1000U;
-    const uint32_t gps_second = gps_seconds % 3600U;
-    const int32_t second = (gps_second + 3600U - PCSG_GPS_UTC_OFFSET_S) % 3600U;
+    uint8_t network_hour;
+    const int32_t second = (int32_t)pcsg_time_frame_second(&timing, age_ms, &network_hour);
 
     DateTime target;
     furi_hal_rtc_get_datetime(&target);
     int32_t adjustment = second - ((int32_t)target.minute * 60 + target.second);
     if(full) {
-        // BIW hour uses daylight time year-round; set L0 means standard time.
-        const uint8_t hour = (timing.hour + gps_seconds / 3600U + 24U -
-                              timing.standard_time - (gps_second < PCSG_GPS_UTC_OFFSET_S)) % 24U;
-        adjustment += ((int32_t)hour - target.hour) * 3600;
-        target.hour = hour;
+        adjustment += ((int32_t)network_hour - target.hour) * 3600;
+        target.hour = network_hour;
     } else {
         if(adjustment > 1800) adjustment -= 3600;
         if(adjustment < -1800) adjustment += 3600;

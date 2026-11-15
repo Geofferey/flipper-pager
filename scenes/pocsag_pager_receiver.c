@@ -75,6 +75,27 @@ static void pocsag_pager_scene_receiver_update_statusbar(void* context) {
         app->pcsg_receiver, frequency, modulation_short, history);
 }
 
+/*
+ * The status bar alternates between the frequency line and the network's own
+ * clock, ten seconds each, starting on the frequency. The phase comes from the
+ * tick the scene opened on, so it is the same whichever way the scene is
+ * entered. With no clock words yet there is nothing to show, and the view
+ * leaves the frequency line up.
+ */
+#define PCSG_RX_BAR_PERIOD_MS 10000U
+
+static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
+    const uint32_t period = furi_ms_to_ticks(PCSG_RX_BAR_PERIOD_MS);
+    const bool show = ((furi_get_tick() - app->rx_bar_tick) / period) % 2U != 0U;
+
+    char text[12] = "";
+    uint8_t hour, minute, second;
+    if(pcsg_time_network(app, &hour, &minute, &second)) {
+        snprintf(text, sizeof(text), "%02u:%02u:%02u", hour, minute, second);
+    }
+    pcsg_view_receiver_set_clock(app->pcsg_receiver, text, show);
+}
+
 void pocsag_pager_scene_receiver_callback(PCSGCustomEvent event, void* context) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
@@ -153,6 +174,8 @@ void pocsag_pager_scene_receiver_on_enter(void* context) {
     pcsg_view_receiver_set_item_count(app->pcsg_receiver, pcsg_history_get_item(app->txrx->history));
     if(pcsg_history_get_item(app->txrx->history)) app->txrx->rx_key_state = PCSGRxKeyStateAddKey;
     pocsag_pager_scene_receiver_update_statusbar(app);
+    app->rx_bar_tick = furi_get_tick();
+    pocsag_pager_scene_receiver_update_clock(app);
 
     pcsg_view_receiver_set_callback(app->pcsg_receiver, pocsag_pager_scene_receiver_callback, app);
     subghz_receiver_set_rx_callback(
@@ -260,6 +283,7 @@ bool pocsag_pager_scene_receiver_on_event(void* context, SceneManagerEvent event
         }
     } else if(event.type == SceneManagerEventTypeTick) {
         pcsg_time_sync(app);
+        pocsag_pager_scene_receiver_update_clock(app);
         // Reading RSSI needs SPI, and FLEX4 needs uninterrupted access to both
         // hard-decision GPIOs, one of which shares the SPI MISO pin.
         if(!pcsg_preset_is_flex4(furi_string_get_cstr(app->txrx->preset->name))) {

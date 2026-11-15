@@ -50,6 +50,7 @@ typedef struct {
     FuriString* frequency_str;
     FuriString* preset_str;
     FuriString* history_stat_str;
+    FuriString* time_str;
     FuriString* row_str;
     PCSGReceiverItemCallback item_callback;
     void* item_context;
@@ -62,6 +63,8 @@ typedef struct {
     char filter_hint[24];
     // Browsing a saved log: no radio, so no Config button or RSSI.
     bool review;
+    // Status bar showing the network clock rather than the frequency line.
+    bool show_time;
 } PCSGReceiverModel;
 
 void pcsg_receiver_rssi(PCSGReceiver* instance, float rssi) {
@@ -236,6 +239,47 @@ static void pcsg_view_rssi_draw(Canvas* canvas, PCSGReceiverModel* model) {
     }
 }
 
+void pcsg_view_receiver_set_clock(
+    PCSGReceiver* pcsg_receiver,
+    const char* time_str,
+    bool show) {
+    furi_assert(pcsg_receiver);
+    with_view_model(
+        pcsg_receiver->view,
+        PCSGReceiverModel * model,
+        {
+            furi_string_set_str(model->time_str, time_str ? time_str : "");
+            model->show_time = show;
+        },
+        true);
+}
+
+/*
+ * The bottom row: the frequency, modulation and page count, or the network
+ * clock in their place. It starts to the right of the Config button, whose
+ * width is its label measured in the current font plus the padding, arrow and
+ * shadow elements_button_left() puts around it -- a constant would be clipped
+ * the moment either the label or the font changed. The count is right-aligned
+ * so a five-figure total cannot run off the screen either.
+ */
+static void pcsg_view_receiver_draw_statusbar(Canvas* canvas, PCSGReceiverModel* model) {
+    uint8_t x = 2;
+    if(!model->review) {
+        // elements_button_left(): the box is the label plus 13 px of padding
+        // and arrow, then three shadow lines. Two more to clear it.
+        x = (uint8_t)(canvas_string_width(canvas, "Config") + 13U + 3U + 2U);
+    }
+    if(model->show_time && !furi_string_empty(model->time_str)) {
+        canvas_draw_str(canvas, x, 62, furi_string_get_cstr(model->time_str));
+        return;
+    }
+    canvas_draw_str(canvas, x, 62, furi_string_get_cstr(model->frequency_str));
+    x += (uint8_t)(canvas_string_width(canvas, furi_string_get_cstr(model->frequency_str)) + 4U);
+    canvas_draw_str(canvas, x, 62, furi_string_get_cstr(model->preset_str));
+    canvas_draw_str_aligned(
+        canvas, 127, 62, AlignRight, AlignBottom, furi_string_get_cstr(model->history_stat_str));
+}
+
 void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
@@ -292,9 +336,7 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
         canvas_draw_str(canvas, 74, 62, "Locked");
         break;
     case PCSGReceiverBarShowToUnlockPress:
-        canvas_draw_str(canvas, 44, 62, furi_string_get_cstr(model->frequency_str));
-        canvas_draw_str(canvas, 79, 62, furi_string_get_cstr(model->preset_str));
-        canvas_draw_str(canvas, 96, 62, furi_string_get_cstr(model->history_stat_str));
+        pcsg_view_receiver_draw_statusbar(canvas, model);
         canvas_set_font(canvas, FontSecondary);
         elements_bold_rounded_frame(canvas, 14, 8, 99, 48);
         elements_multiline_text(canvas, 65, 26, "To unlock\npress:");
@@ -319,9 +361,7 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
             canvas, 64, 62, AlignCenter, AlignBottom, model->filter_hint);
         break;
     default:
-        canvas_draw_str(canvas, 44, 62, furi_string_get_cstr(model->frequency_str));
-        canvas_draw_str(canvas, 79, 62, furi_string_get_cstr(model->preset_str));
-        canvas_draw_str(canvas, 96, 62, furi_string_get_cstr(model->history_stat_str));
+        pcsg_view_receiver_draw_statusbar(canvas, model);
         break;
     }
 }
@@ -488,6 +528,8 @@ void pcsg_view_receiver_exit(void* context) {
             furi_string_reset(model->frequency_str);
             furi_string_reset(model->preset_str);
             furi_string_reset(model->history_stat_str);
+            furi_string_reset(model->time_str);
+            model->show_time = false;
             model->idx = 0;
             model->list_offset = 0;
             model->history_item = 0;
@@ -521,6 +563,7 @@ PCSGReceiver* pcsg_view_receiver_alloc() {
             model->frequency_str = furi_string_alloc();
             model->preset_str = furi_string_alloc();
             model->history_stat_str = furi_string_alloc();
+            model->time_str = furi_string_alloc();
             model->row_str = furi_string_alloc();
             model->bar_show = PCSGReceiverBarShowDefault;
         },
@@ -542,6 +585,7 @@ void pcsg_view_receiver_free(PCSGReceiver* pcsg_receiver) {
             furi_string_free(model->frequency_str);
             furi_string_free(model->preset_str);
             furi_string_free(model->history_stat_str);
+            furi_string_free(model->time_str);
             furi_string_free(model->row_str);
         },
         false);

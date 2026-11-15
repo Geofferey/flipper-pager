@@ -91,6 +91,9 @@ struct POCSAGPagerApp {
     // beacon period at a time rather than from "now", so the 100 ms scene tick
     // cannot accumulate into a drifting cadence. Unsigned differences keep the
     // comparisons right across a tick counter wrap.
+    // Tick the receiver's status bar started its cycle on, so it always opens
+    // on the frequency line rather than wherever a free-running clock landed.
+    uint32_t rx_bar_tick;
     uint32_t tx_burst_tick;
     // Frames that burst carries, taken while its encoder still exists. It sets
     // the period, and more than one frame means it carried the periodic page.
@@ -115,6 +118,8 @@ void pcsg_get_frequency_modulation(
     FuriString* modulation);
 bool pcsg_preset_is_flex4(const char* preset_name);
 void pcsg_time_sync(POCSAGPagerApp* app);
+/** The FLEX network's own time of day. False until its clock words arrive. */
+bool pcsg_time_network(POCSAGPagerApp* app, uint8_t* hour, uint8_t* minute, uint8_t* second);
 bool pcsg_classic_alert_request(POCSAGPagerApp* app);
 void pcsg_classic_alert_tick(POCSAGPagerApp* app);
 void pcsg_classic_alert_reset(POCSAGPagerApp* app);
