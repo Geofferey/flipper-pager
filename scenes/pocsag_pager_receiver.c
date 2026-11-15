@@ -95,10 +95,8 @@ static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
         char text[24];
         size_t at = 0;
         if(now.have_zone) {
-            const int16_t m = now.zone_minutes;
-            const uint16_t mag = (uint16_t)(m < 0 ? -m : m);
-            at += snprintf(text, sizeof(text), "UTC%c%u", m < 0 ? '-' : '+', mag / 60U);
-            if(mag % 60U) at += snprintf(text + at, sizeof(text) - at, ":%02u", mag % 60U);
+            pcsg_zone_format(now.zone_minutes, text, sizeof(text));
+            at = strlen(text);
             at += snprintf(text + at, sizeof(text) - at, " ");
         }
         snprintf(text + at, sizeof(text) - at, "%02u:%02u:%02u", now.hour, now.minute, now.second);

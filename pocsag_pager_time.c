@@ -44,21 +44,60 @@ static bool pcsg_time_frame(POCSAGPagerApp* app, FlexFrameTiming* timing, uint32
 
 /*
  * Zone offsets in quarter hours, indexed by the zone code, from TI's TMS320FLEX
- * table 2-8 (see README.md). Code 16 is reserved and reads as GMT.
+ * table 2-8 (see README.md). Code 16 is reserved and reads as GMT. Quarter
+ * hours because every zone FLEX can name is a whole number of them, so the
+ * whole table is 32 bytes.
  */
-static const int8_t pcsg_time_zone_quarters[32] = {
+static const int8_t pcsg_zone_quarters[32] = {
     0,  4,   8,   12,  16,  20,  24,  28,  32,  36,  40,  44,  48,  14,  18,  22,
     0,  23,  26,  38,  -14, -44, -40, -36, -32, -28, -24, -20, -16, -12, -8,  -4,
 };
 
+/*
+ * The same codes in UTC order, which is not code order: the codes run +0 to
+ * +12, then the fractional zones, then -11 to -1. The transmitter's row steps
+ * through this so it reads like a map; everything else works in codes. Keeping
+ * the order as 31 bytes beside the offsets costs a great deal less than a
+ * second table of labels, which is what this replaced - the labels are just
+ * the offsets formatted, so none of them need storing.
+ */
+static const uint8_t pcsg_zone_order[PCSG_ZONE_COUNT] = {
+    21, 22, 23, 24, 25, 26, 27, 28, 20, 29, 30, 31, 0, 1,  2,  3,
+    13, 4,  14, 5,  15, 17, 6,  18, 7,  8,  9,  19, 10, 11, 12,
+};
+
+int16_t pcsg_zone_minutes(uint8_t code) {
+    return code < 32U ? (int16_t)pcsg_zone_quarters[code] * 15 : 0;
+}
+
+uint8_t pcsg_zone_code(uint8_t index) {
+    return index < PCSG_ZONE_COUNT ? pcsg_zone_order[index] : pcsg_zone_order[PCSG_ZONE_UTC0];
+}
+
+uint8_t pcsg_zone_index(uint8_t code) {
+    for(uint8_t i = 0; i < PCSG_ZONE_COUNT; i++) {
+        if(pcsg_zone_order[i] == code) return i;
+    }
+    // Code 16 is reserved, so it is the one value that is not in the order.
+    return PCSG_ZONE_UTC0;
+}
+
+void pcsg_zone_format(int16_t minutes, char* out, size_t size) {
+    const uint16_t magnitude = (uint16_t)(minutes < 0 ? -minutes : minutes);
+    const char sign = minutes < 0 ? '-' : '+';
+    if(magnitude % 60U) {
+        snprintf(out, size, "UTC%c%u:%02u", sign, magnitude / 60U, magnitude % 60U);
+    } else {
+        snprintf(out, size, "UTC%c%u", sign, magnitude / 60U);
+    }
+}
+
 static bool pcsg_time_zone_minutes(const FlexFrameTiming* timing, int16_t* minutes) {
     if(timing->zone >= 32U) return false;
-    int16_t offset = (int16_t)pcsg_time_zone_quarters[timing->zone] * 15;
     // The networks name the zone's daylight offset and leave the code alone all
     // year, so standard time is an hour back from it. Same correction the hour
     // gets, and the same one Geofferey's Mayhem flex_rx fork applies.
-    if(timing->standard_time) offset -= 60;
-    *minutes = offset;
+    *minutes = pcsg_zone_minutes(timing->zone) - (timing->standard_time ? 60 : 0);
     return true;
 }
 

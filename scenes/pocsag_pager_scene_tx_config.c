@@ -24,27 +24,6 @@ static const char* const tx_flex_mode_text[] = {"1600/2FSK", "3200/2FSK"};
 // Indexed by the stored bit mask, so the order follows PCSG_TX_CLOCK_*.
 static const char* const tx_clock_text[] = {"Off", "Time", "Date", "Time+Date"};
 
-/*
- * The FLEX zone codes, from Mayhem flex_tx's options_tz (see README.md), listed
- * in UTC order rather than code order so the row steps through them the way a
- * map reads. Code 16 is not a zone and so is not here.
- */
-static const struct {
-    uint8_t code;
-    const char* text;
-} tx_utc_zones[] = {
-    {21, "UTC-11"},   {22, "UTC-10"},   {23, "UTC-9"},    {24, "UTC-8"},
-    {25, "UTC-7"},    {26, "UTC-6"},    {27, "UTC-5"},    {28, "UTC-4"},
-    {20, "UTC-3:30"}, {29, "UTC-3"},    {30, "UTC-2"},    {31, "UTC-1"},
-    {0, "UTC+0"},     {1, "UTC+1"},     {2, "UTC+2"},     {3, "UTC+3"},
-    {13, "UTC+3:30"}, {4, "UTC+4"},     {14, "UTC+4:30"}, {5, "UTC+5"},
-    {15, "UTC+5:30"}, {17, "UTC+5:45"}, {6, "UTC+6"},     {18, "UTC+6:30"},
-    {7, "UTC+7"},     {8, "UTC+8"},     {9, "UTC+9"},     {19, "UTC+9:30"},
-    {10, "UTC+10"},   {11, "UTC+11"},   {12, "UTC+12"},
-};
-// Where UTC+0 sits in the table above, which is where an unknown code lands.
-#define PCSG_TX_UTC_ZERO_INDEX 12U
-
 // Off is standard time, which is the bit set; On is daylight, the bit clear.
 static const char* const tx_dst_text[] = {"Off", "On"};
 
@@ -151,13 +130,6 @@ static void pocsag_pager_scene_tx_show_clock(POCSAGPagerApp* app) {
     variable_item_set_current_value_text(item, tx_clock_text[app->tx_config.clock_biws]);
 }
 
-static uint8_t pocsag_pager_scene_tx_utc_index(uint8_t code) {
-    for(uint8_t i = 0; i < COUNT_OF(tx_utc_zones); i++) {
-        if(tx_utc_zones[i].code == code) return i;
-    }
-    return PCSG_TX_UTC_ZERO_INDEX;
-}
-
 // The zone word only rides with the time, so with the time off there is
 // nothing for this row to set.
 static void pocsag_pager_scene_tx_show_utc(POCSAGPagerApp* app) {
@@ -165,23 +137,26 @@ static void pocsag_pager_scene_tx_show_utc(POCSAGPagerApp* app) {
     if(!item) return;
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
     const bool used = flex && (app->tx_config.clock_biws & PCSG_TX_CLOCK_TIME) != 0U;
-    variable_item_set_values_count(item, used ? COUNT_OF(tx_utc_zones) : 1U);
+    variable_item_set_values_count(item, used ? PCSG_ZONE_COUNT : 1U);
     if(!used) {
         variable_item_set_current_value_index(item, 0);
         variable_item_set_current_value_text(item, flex ? "No zone" : "N/A");
         return;
     }
-    const uint8_t index = pocsag_pager_scene_tx_utc_index(app->tx_config.utc_code);
-    variable_item_set_current_value_index(item, index);
-    variable_item_set_current_value_text(item, tx_utc_zones[index].text);
+    char text[12];
+    const uint8_t code = app->tx_config.utc_code;
+    pcsg_zone_format(pcsg_zone_minutes(code), text, sizeof(text));
+    variable_item_set_current_value_index(item, pcsg_zone_index(code));
+    variable_item_set_current_value_text(item, text);
 }
 
 static void pocsag_pager_scene_tx_set_utc(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
-    const uint8_t index = variable_item_get_current_value_index(item);
-    if(index >= COUNT_OF(tx_utc_zones)) return;
-    app->tx_config.utc_code = tx_utc_zones[index].code;
-    variable_item_set_current_value_text(item, tx_utc_zones[index].text);
+    const uint8_t code = pcsg_zone_code(variable_item_get_current_value_index(item));
+    char text[12];
+    pcsg_zone_format(pcsg_zone_minutes(code), text, sizeof(text));
+    app->tx_config.utc_code = code;
+    variable_item_set_current_value_text(item, text);
 }
 
 // Rides in the zone word beside the UTC code, so it comes and goes with it.
@@ -437,7 +412,7 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     variable_item_list_add(
         app->variable_item_list,
         "UTC:",
-        COUNT_OF(tx_utc_zones),
+        PCSG_ZONE_COUNT,
         pocsag_pager_scene_tx_set_utc,
         app);
     pocsag_pager_scene_tx_show_utc(app);

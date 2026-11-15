@@ -134,6 +134,24 @@ typedef struct {
 
 /** False until the network's clock words arrive, or while they are stale. */
 bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out);
+
+/*
+ * FLEX time zones, shared by the transmitter's UTC row and the receiver's
+ * status bar. 31 of the 32 codes name a zone; code 16 is reserved. The offsets
+ * are the zone's own, so a receiver still has to apply the standard/daylight
+ * flag itself.
+ */
+#define PCSG_ZONE_COUNT 31U
+/** Where UTC+0 sits in the ordering, and where an unknown code lands. */
+#define PCSG_ZONE_UTC0 12U
+/** Minutes from GMT for a zone code; 0 for anything that is not one. */
+int16_t pcsg_zone_minutes(uint8_t code);
+/** Zone code at a position in UTC order, for stepping through them. */
+uint8_t pcsg_zone_code(uint8_t index);
+/** Where a code sits in that order. */
+uint8_t pcsg_zone_index(uint8_t code);
+/** Writes an offset as "UTC-8" or "UTC+5:45". */
+void pcsg_zone_format(int16_t minutes, char* out, size_t size);
 bool pcsg_classic_alert_request(POCSAGPagerApp* app);
 void pcsg_classic_alert_tick(POCSAGPagerApp* app);
 void pcsg_classic_alert_reset(POCSAGPagerApp* app);
