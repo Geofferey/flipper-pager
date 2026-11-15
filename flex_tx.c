@@ -26,13 +26,21 @@
 #define FLEX_TX_SYNC1_BYTES    14U
 #define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
 /*
- * The test beacon runs a short acquisition burst, matching the FLEX network
- * measured on air at 929.4625 MHz: it keys up 98 ms before sync1, every
- * burst. One cycle here is 12 bytes, 60 ms at 1600 baud, so two is the closest
- * this gets. Every length that depends on it is derived, including the clock's
- * pre-FIW allowance, so the number is the only thing to change.
+ * The test beacon's preamble, taken off the air from the FLEX network at
+ * 929.4625 MHz: a 37.5 Hz square wave at full deviation, far below the 800 Hz
+ * of sync1's bit sync, held about 98 ms ahead of every burst and bit-identical
+ * each time. Half a period is 64/3 bits at 1600 baud, so the runs it produces
+ * alternate 21 and 22 bits, as the captured ones do. 160 bits is 100 ms and
+ * lands byte-aligned.
+ *
+ * A page keeps the longer ERS burst instead: a receiver may meet a single page
+ * cold, where the beacon repeats forever.
  */
-#define FLEX_TX_TEST_ERS_CYCLES 2U
+#define FLEX_TX_TEST_PREAMBLE_BITS  160U
+#define FLEX_TX_TEST_PREAMBLE_BYTES (FLEX_TX_TEST_PREAMBLE_BITS / 8U)
+// Starting phase within the square wave. 20 is what makes these 160 bits come
+// out byte-for-byte as captured, ending on a low run into sync1.
+#define FLEX_TX_TEST_PREAMBLE_PHASE 20U
 /*
  * 3200/2-level keeps the burst, sync1 and the FIW at 1600 -- a receiver has to
  * read the mode out of sync1 before it can know any other rate -- and runs
@@ -272,6 +280,19 @@ static void flex_tx_write_word(uint8_t** output, uint32_t word) {
     *(*output)++ = word & 0xFFU;
 }
 
+static void flex_tx_write_preamble(uint8_t** output, uint16_t total_bits) {
+    uint8_t byte = 0;
+    for(uint16_t i = 0; i < total_bits; i++) {
+        // 37.5 Hz at 1600 baud: half a period is 64/3 bits.
+        const uint32_t phase = (uint32_t)i + FLEX_TX_TEST_PREAMBLE_PHASE;
+        byte = (uint8_t)((byte << 1) | ((phase * 3U / 64U) & 1U));
+        if((i % 8U) == 7U) {
+            *(*output)++ = byte;
+            byte = 0;
+        }
+    }
+}
+
 static void flex_tx_write_ers(uint8_t** output, uint8_t cycles) {
     static const uint8_t ers_code[] = {0xCB, 0x20, 0x59, 0x39};
     for(uint8_t cycle = 0; cycle < cycles; cycle++) {
@@ -445,10 +466,9 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         .message_number = message_number,
         .signature = flex_tx_signature(config->message, message_length),
     };
-    const uint8_t ers_cycles =
-        config->test_beacon ? FLEX_TX_TEST_ERS_CYCLES : FLEX_TX_ERS_CYCLES;
-    const size_t ers_bytes = (size_t)ers_cycles * 12U;
-    flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(ers_bytes));
+    const size_t lead_bytes =
+        config->test_beacon ? FLEX_TX_TEST_PREAMBLE_BYTES : FLEX_TX_ERS_BYTES;
+    flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(lead_bytes));
 
     // A tone-only page and a test beacon are one frame with nothing to split.
     const uint8_t fragments =
@@ -465,8 +485,12 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
      * a repeat apart, so repeating is not required of a sender.
      */
     uint8_t* output = encoder->bytes;
-    flex_tx_write_ers(&output, ers_cycles);
-    encoder->frame_base = ers_bytes;
+    if(config->test_beacon) {
+        flex_tx_write_preamble(&output, FLEX_TX_TEST_PREAMBLE_BITS);
+    } else {
+        flex_tx_write_ers(&output, FLEX_TX_ERS_CYCLES);
+    }
+    encoder->frame_base = lead_bytes;
     for(uint8_t i = 0; i < fragments; i++) {
         const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
         const size_t remaining = message_length - offset;
