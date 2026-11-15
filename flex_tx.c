@@ -26,19 +26,13 @@
 #define FLEX_TX_SYNC1_BYTES    14U
 #define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
 /*
- * The test beacon carries no acquisition burst at all. It repeats, so only
- * the first of them is ever a cold start, and sync1 opens with 32 bits of bit
- * sync of its own, which is where the sync pattern is matched from in any
- * case. Raise this if a receiver cannot take the first burst; every length
- * that depends on it is derived, so the number is the only thing to change.
+ * The test beacon runs a short acquisition burst, matching the FLEX network
+ * measured on air at 929.4625 MHz: it keys up 98 ms before sync1, every
+ * burst. One cycle here is 12 bytes, 60 ms at 1600 baud, so two is the closest
+ * this gets. Every length that depends on it is derived, including the clock's
+ * pre-FIW allowance, so the number is the only thing to change.
  */
-#define FLEX_TX_TEST_ERS_CYCLES 0U
-/*
- * Frames per beacon burst, sent back to back. A FLEX network's own test page
- * runs three consecutive frames as one keyed burst, measured on air at
- * 929.4625 MHz. Cannot exceed FLEX_TX_MAX_FRAGMENTS, which sizes the buffer.
- */
-#define FLEX_TX_TEST_FRAMES 3U
+#define FLEX_TX_TEST_ERS_CYCLES 2U
 /*
  * 3200/2-level keeps the burst, sync1 and the FIW at 1600 -- a receiver has to
  * read the mode out of sync1 before it can know any other rate -- and runs
@@ -453,13 +447,11 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     const size_t ers_bytes = (size_t)ers_cycles * 12U;
     flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(ers_bytes));
 
-    // A tone-only page is one frame with nothing to split; a test beacon is a
-    // run of consecutive frames carrying no pages at all.
+    // A tone-only page and a test beacon are one frame with nothing to split.
     const uint8_t fragments =
-        config->test_beacon  ? FLEX_TX_TEST_FRAMES :
-        message_length == 0U ? 1U :
-                               (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) /
-                                         FLEX_TX_FRAGMENT_CHARS);
+        (config->test_beacon || message_length == 0U) ?
+            1U :
+            (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
     if(fragments > FLEX_TX_MAX_FRAGMENTS) return false;
 
     /*
@@ -473,21 +465,12 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     flex_tx_write_ers(&output, ers_cycles);
     encoder->frame_base = ers_bytes;
     for(uint8_t i = 0; i < fragments; i++) {
-        if(config->test_beacon) {
-            // No pages to carry, so none of the message fields apply. Slicing
-            // an empty message would underflow `remaining` below.
-            spec.fragment = 0U;
-            spec.continuation = false;
-            spec.text = config->message;
-            spec.length = 0U;
-        } else {
-            const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
-            const size_t remaining = message_length - offset;
-            spec.fragment = (i == 0U) ? 3U : (uint8_t)((i - 1U) % 3U);
-            spec.continuation = (uint8_t)(i + 1U) < fragments;
-            spec.text = config->message + offset;
-            spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
-        }
+        const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
+        const size_t remaining = message_length - offset;
+        spec.fragment = (i == 0U) ? 3U : (uint8_t)((i - 1U) % 3U);
+        spec.continuation = (uint8_t)(i + 1U) < fragments;
+        spec.text = config->message + offset;
+        spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
         if(!flex_tx_write_frame(&output, config, &spec, true)) return false;
         flex_tx_clock_advance(&spec);
     }

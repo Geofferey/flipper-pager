@@ -1,13 +1,13 @@
 #include "../pocsag_pager_app_i.h"
 
 /*
- * Beacon burst period, start to start, matching the test page of the FLEX
- * network measured on air at 929.4625 MHz: FLEX_TX_TEST_FRAMES consecutive
- * frames as one keyed burst, repeating every 60 s to within a millisecond.
- * The burst itself is 1.875 s per frame, so the quiet time is whatever is left
- * of the period rather than a constant of its own.
+ * Beacon period, burst start to burst start: two 1.875 s FLEX frame slots. A
+ * FLEX network measured on air at 929.4625 MHz keys one frame every second
+ * slot, so a frame of air is followed by an equal quiet gap. The frame is
+ * exactly 1.875 s, so the gap is whatever is left of the period rather than a
+ * constant of its own.
  */
-#define PCSG_TX_BEACON_PERIOD_MS 60000U
+#define PCSG_TX_BEACON_PERIOD_MS 3750U
 
 static void pocsag_pager_scene_tx_confirm_callback(
     GuiButtonType result,
