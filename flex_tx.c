@@ -49,10 +49,20 @@
  */
 #define FLEX_TX_FIW_BYTES   4U
 #define FLEX_TX_SYNC2_BYTES 5U
-// Flush tail, sent once after the last frame. The network measured at
-// 929.4625 MHz holds alternating bits roughly 100 ms past the end of a frame
-// before dropping the carrier, which is 20 bytes at 1600 baud.
-#define FLEX_TX_TAIL_BYTES  20U
+/*
+ * Flush tail, sent once after the last frame, as the network at 929.4625 MHz
+ * sends it: 75 ms of alternating bits -- 800 Hz at 1600 baud -- then a step
+ * DOWN to 750 Hz for the last 30 ms, and only then does the carrier drop. It
+ * does not end abruptly. 750 Hz is a half period of 16/15 bits, so sliced at
+ * 1600 baud it reads as alternating with one doubled bit every 16.
+ *
+ * These 168 bits reproduce the capture byte for byte except the last, which
+ * falls inside the key-down ramp: 55 x15, AA, D5, 55, 2A, AA, D4.
+ */
+#define FLEX_TX_TAIL_BITS        168U
+#define FLEX_TX_TAIL_SHIFT_BIT   120U
+#define FLEX_TX_TAIL_SHIFT_PHASE 8U
+#define FLEX_TX_TAIL_BYTES       (FLEX_TX_TAIL_BITS / 8U)
 #define FLEX_TX_HEAD_BYTES  (FLEX_TX_SYNC1_BYTES + FLEX_TX_FIW_BYTES)
 #define FLEX_TX_FAST_FRAME_BYTES \
     (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 2U + 11U * 64U)
@@ -293,6 +303,26 @@ static void flex_tx_write_preamble(uint8_t** output, uint16_t total_bits) {
     }
 }
 
+static void flex_tx_write_tail(uint8_t** output) {
+    uint8_t byte = 0;
+    for(uint16_t i = 0; i < FLEX_TX_TAIL_BITS; i++) {
+        uint8_t level;
+        if(i < FLEX_TX_TAIL_SHIFT_BIT) {
+            level = (uint8_t)(i & 1U);
+        } else {
+            // 750 Hz: half a period is 16/15 bits.
+            const uint32_t n =
+                (uint32_t)(i - FLEX_TX_TAIL_SHIFT_BIT) + FLEX_TX_TAIL_SHIFT_PHASE;
+            level = (uint8_t)((n * 15U / 16U) & 1U);
+        }
+        byte = (uint8_t)((byte << 1) | level);
+        if((i % 8U) == 7U) {
+            *(*output)++ = byte;
+            byte = 0;
+        }
+    }
+}
+
 static void flex_tx_write_ers(uint8_t** output, uint8_t cycles) {
     static const uint8_t ers_code[] = {0xCB, 0x20, 0x59, 0x39};
     for(uint8_t cycle = 0; cycle < cycles; cycle++) {
@@ -502,7 +532,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         flex_tx_clock_advance(&spec);
     }
     // One flush tail for the whole transmission, after the last frame.
-    for(uint8_t i = 0; i < FLEX_TX_TAIL_BYTES; i++) *output++ = 0xAA;
+    flex_tx_write_tail(&output);
     encoder->frames = fragments;
     encoder->byte_count = output - encoder->bytes;
     furi_check(encoder->byte_count <= sizeof(encoder->bytes));
