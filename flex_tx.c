@@ -471,11 +471,26 @@ static bool flex_tx_write_frame(
 
     uint8_t* const sync1_out = *output;
     for(size_t i = 0; i < COUNT_OF(sync1); i++) *(*output)++ = sync1[i];
-    if(fast) {
-        // Mode marker 0x7B18 and its inverse, in place of 1600/2's 0x870C.
-        sync1_out[4] = 0x84;
+    /*
+     * The mode marker, in place of 1600/2's 0x870C: bytes 10 and 11 carry it
+     * and bytes 4 and 5 its inverse. A receiver reads this before anything
+     * else and demodulates the rest of the frame the way it says, so it has to
+     * describe the modulation actually used, not just the bit rate. Four-level
+     * carries 3200 bps as 1600 symbols a second, which is its own mode: send
+     * 3200/2's marker with four-level symbols and the receiver slices them two
+     * ways at 3200 baud and files the bits under phases A and C.
+     *
+     * Codes from flex_modes[] in protocols/flex.c.
+     */
+    if(config->flex_4level) {
+        sync1_out[4] = 0x4F; // ~0xB068
+        sync1_out[5] = 0x97;
+        sync1_out[10] = 0xB0; // 1600 baud, four levels
+        sync1_out[11] = 0x68;
+    } else if(fast) {
+        sync1_out[4] = 0x84; // ~0x7B18
         sync1_out[5] = 0xE7;
-        sync1_out[10] = 0x7B;
+        sync1_out[10] = 0x7B; // 3200 baud, two levels
         sync1_out[11] = 0x18;
     }
     flex_tx_write_word(output, flex_tx_fiw(spec->cycle, spec->frame));
