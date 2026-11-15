@@ -161,6 +161,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"ShowAlpha", 0, PCSG_FIELD(filter.show_alpha), PCSGSetBool},
     {"ShowNumeric", 0, PCSG_FIELD(filter.show_numeric), PCSGSetBool},
     {"ShowTone", 0, PCSG_FIELD(filter.show_tone), PCSGSetBool},
+    {"TxClockBiws", PCSG_TX_CLOCK_BOTH, PCSG_FIELD(tx_config.clock_biws), PCSGSetU32},
 };
 
 static uint32_t pcsg_setting_get(const POCSAGPagerApp* app, const PCSGSetting* setting) {

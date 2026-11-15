@@ -14,6 +14,18 @@
 #define PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH 80U
 #define PCSG_TX_RIC_MAX                   0x1FFFFFU
 
+/*
+ * Clock BIWs a FLEX transmission carries, one bit each, so the stored value is
+ * also the Clock row's index. The zone word rides with the time: it carries
+ * the standard/daylight flag the hour is in. Three words is the ceiling -- BIW1
+ * holds the address offset in two bits, so word 4 is as far out as the address
+ * can start -- which is exactly time, date and zone.
+ */
+#define PCSG_TX_CLOCK_TIME  1U
+#define PCSG_TX_CLOCK_DATE  2U
+#define PCSG_TX_CLOCK_BOTH  3U
+#define PCSG_TX_CLOCK_COUNT 4U
+
 /** Body of a Sequence page; the counter is four digits, so it wraps at 9999. */
 #define PCSG_TX_SEQUENCE_FORMAT "THIS IS A TEST PERIODIC PAGE SEQUENTIAL NUMBER %04u"
 #define PCSG_TX_SEQUENCE_MAX    9999U
@@ -57,6 +69,8 @@ typedef struct {
     bool inverted;
     /** FLEX only: 3200/2-level instead of 1600/2-level. */
     bool flex_3200;
+    /** FLEX only: which clock BIWs to send, PCSG_TX_CLOCK_* as a bit each. */
+    uint8_t clock_biws;
     /** Which body to send. Not saved. */
     PagerTxMessageMode message_mode;
     /** Sequence mode: the number this page carries. Not saved. */

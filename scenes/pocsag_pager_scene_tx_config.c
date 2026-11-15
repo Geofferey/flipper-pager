@@ -8,6 +8,7 @@ typedef enum {
     PCSGTxConfigBaud,
     PCSGTxConfigPolarity,
     PCSGTxConfigCorrection,
+    PCSGTxConfigClock,
     PCSGTxConfigMessage,
     PCSGTxConfigReview,
 } PCSGTxConfigIndex;
@@ -18,6 +19,8 @@ static const char* const tx_protocol_text[] = {"POCSAG", "FLEX"};
 static const char* const tx_function_text[] = {"0", "1", "2", "3"};
 static const char* const tx_polarity_text[] = {"Standard", "Inverted"};
 static const char* const tx_flex_mode_text[] = {"1600/2FSK", "3200/2FSK"};
+// Indexed by the stored bit mask, so the order follows PCSG_TX_CLOCK_*.
+static const char* const tx_clock_text[] = {"Off", "Time", "Date", "Time+Date"};
 
 #define PCSG_FREQ_CORR_COUNT                                                   \
     ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
@@ -102,6 +105,35 @@ static void pocsag_pager_scene_tx_show_address(POCSAGPagerApp* app) {
     char text[20];
     snprintf(text, sizeof(text), "%lu", app->tx_config.ric);
     variable_item_set_current_value_text(item, text);
+}
+
+// Only FLEX carries BIWs, so POCSAG has nothing to choose here.
+static void pocsag_pager_scene_tx_show_clock(POCSAGPagerApp* app) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigClock);
+    if(!item) return;
+    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
+    variable_item_set_values_count(item, flex ? PCSG_TX_CLOCK_COUNT : 1U);
+    if(!flex) {
+        variable_item_set_current_value_index(item, 0);
+        variable_item_set_current_value_text(item, "N/A");
+        return;
+    }
+    if(app->tx_config.clock_biws > PCSG_TX_CLOCK_BOTH) {
+        app->tx_config.clock_biws = PCSG_TX_CLOCK_BOTH;
+    }
+    variable_item_set_current_value_index(item, app->tx_config.clock_biws);
+    variable_item_set_current_value_text(item, tx_clock_text[app->tx_config.clock_biws]);
+}
+
+static void pocsag_pager_scene_tx_set_clock(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    if(app->tx_config.protocol != PagerTxProtocolFlex) {
+        variable_item_set_current_value_index(item, 0);
+        variable_item_set_current_value_text(item, "N/A");
+        return;
+    }
+    app->tx_config.clock_biws = variable_item_get_current_value_index(item);
+    variable_item_set_current_value_text(item, tx_clock_text[app->tx_config.clock_biws]);
 }
 
 /*
@@ -192,8 +224,10 @@ static void pocsag_pager_scene_tx_set_protocol(VariableItem* item) {
     variable_item_set_current_value_text(item, tx_protocol_text[app->tx_config.protocol]);
     pocsag_pager_scene_tx_clamp_address(app);
     pocsag_pager_scene_tx_show_protocol_options(app);
-    // TEST is FLEX only, so leaving FLEX has to drop it.
+    // The beacon modes and the clock BIWs are FLEX only, so leaving FLEX has
+    // to drop them.
     pocsag_pager_scene_tx_show_message(app);
+    pocsag_pager_scene_tx_show_clock(app);
 }
 
 static void pocsag_pager_scene_tx_set_function(VariableItem* item) {
@@ -302,6 +336,14 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, correction_index);
     // Show what is stored, not the index: a typed value need not be on the grid.
     pocsag_pager_scene_tx_show_correction(item, app->filter.frequency_correction_hz);
+
+    variable_item_list_add(
+        app->variable_item_list,
+        "Clock:",
+        PCSG_TX_CLOCK_COUNT,
+        pocsag_pager_scene_tx_set_clock,
+        app);
+    pocsag_pager_scene_tx_show_clock(app);
 
     variable_item_list_add(
         app->variable_item_list, "Message:", 1, pocsag_pager_scene_tx_set_message, app);

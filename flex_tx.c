@@ -481,18 +481,31 @@ static bool flex_tx_write_frame(
     for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
         frame_words[i] = (i & 1U) ? 0x00000000U : 0xFFFFFFFFU;
     }
-    // Words 1 to 3 are the clock; BIW1 points the address past them. An idle
-    // frame starts the address field where the vector field starts, which is
-    // an empty one: sync and the clock, carrying no pages at all. Three is all
-    // the clock words there is room for: BIW1 holds the address offset in two
-    // bits, so word 4 is as far out as the address can start.
-    const uint8_t address_start = 4U;
-    const uint8_t vector_start = idle ? address_start : 5U;
-    const uint8_t message_start = 6U;
+    /*
+     * The clock words come first and BIW1 points the address past however many
+     * of them there are. Mayhem's slot order is time, date, zone. An idle frame
+     * starts the address field where the vector field starts, which is an empty
+     * one: sync and the clock, carrying no pages at all.
+     */
+    const bool send_time = (config->clock_biws & PCSG_TX_CLOCK_TIME) != 0U;
+    const bool send_date = (config->clock_biws & PCSG_TX_CLOCK_DATE) != 0U;
+    uint32_t clock_words[3];
+    uint8_t clock_count = 0U;
+    if(send_time) {
+        clock_words[clock_count++] =
+            flex_tx_biw_time(spec->hour, (uint8_t)(spec->cycle * 4U));
+    }
+    if(send_date) {
+        clock_words[clock_count++] =
+            flex_tx_biw_date(spec->year_field, spec->month, spec->day);
+    }
+    if(send_time) clock_words[clock_count++] = flex_tx_biw_zone();
+
+    const uint8_t address_start = (uint8_t)(1U + clock_count);
+    const uint8_t vector_start = idle ? address_start : (uint8_t)(address_start + 1U);
+    const uint8_t message_start = (uint8_t)(address_start + 2U);
     frame_words[0] = flex_tx_biw1(address_start, vector_start);
-    frame_words[1] = flex_tx_biw_time(spec->hour, (uint8_t)(spec->cycle * 4U));
-    frame_words[2] = flex_tx_biw_date(spec->year_field, spec->month, spec->day);
-    frame_words[3] = flex_tx_biw_zone();
+    for(uint8_t i = 0; i < clock_count; i++) frame_words[1U + i] = clock_words[i];
     if(!idle) {
         frame_words[address_start] = flex_tx_short_address(config->ric);
         frame_words[vector_start] = tone_only ?

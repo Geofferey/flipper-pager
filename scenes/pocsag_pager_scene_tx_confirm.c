@@ -87,7 +87,7 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
         text = furi_string_alloc_printf(
             "\e#Transmit FLEX?\e#\n"
             "%lu.%04lu MHz | %s\n"
-            "Capcode %lu\n"
+            "Capcode %lu | Clock %s\n"
             "%s polarity | Correction %s\n\n"
             "%s\n\n"
             "Only transmit where authorized.",
@@ -95,6 +95,10 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             (app->tx_config.frequency % 1000000U) / 100U,
             app->tx_config.flex_3200 ? "3200/2FSK" : "1600/2FSK",
             app->tx_config.ric,
+            app->tx_config.clock_biws == PCSG_TX_CLOCK_BOTH        ? "time+date" :
+                app->tx_config.clock_biws == PCSG_TX_CLOCK_TIME    ? "time" :
+                app->tx_config.clock_biws == PCSG_TX_CLOCK_DATE    ? "date" :
+                                                                     "off",
             app->tx_config.inverted ? "Inverted" : "Standard",
             correction,
             body);
