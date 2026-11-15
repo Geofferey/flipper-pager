@@ -19,7 +19,10 @@
  * more than the margin.
  */
 #define FLEX_TX_ERS_CYCLES     24U
-#define FLEX_TX_FRAME_BYTES    379U
+// The frame proper, 3000 bits at 1600 baud = exactly 1.875 s. The flush tail
+// is sent once after the last frame, not per frame, so consecutive frames stay
+// on the network's frame grid.
+#define FLEX_TX_FRAME_BYTES    375U
 #define FLEX_TX_SYNC1_BYTES    14U
 #define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
 /*
@@ -31,6 +34,12 @@
  */
 #define FLEX_TX_TEST_ERS_CYCLES 0U
 /*
+ * Frames per beacon burst, sent back to back. A FLEX network's own test page
+ * runs three consecutive frames as one keyed burst, measured on air at
+ * 929.4625 MHz. Cannot exceed FLEX_TX_MAX_FRAGMENTS, which sizes the buffer.
+ */
+#define FLEX_TX_TEST_FRAMES 3U
+/*
  * 3200/2-level keeps the burst, sync1 and the FIW at 1600 -- a receiver has to
  * read the mode out of sync1 before it can know any other rate -- and runs
  * everything after them at twice that. sync2 is a fixed 25 ms, so it costs
@@ -40,9 +49,8 @@
 #define FLEX_TX_SYNC2_BYTES 5U
 #define FLEX_TX_TAIL_BYTES  4U
 #define FLEX_TX_HEAD_BYTES  (FLEX_TX_SYNC1_BYTES + FLEX_TX_FIW_BYTES)
-#define FLEX_TX_FAST_FRAME_BYTES                                    \
-    (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 2U + 11U * 64U +    \
-     FLEX_TX_TAIL_BYTES)
+#define FLEX_TX_FAST_FRAME_BYTES \
+    (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 2U + 11U * 64U)
 
 /*
  * A message longer than one page is split into fragments, each sent as its own
@@ -55,8 +63,9 @@
  */
 #define FLEX_TX_MAX_FRAGMENTS  3U
 #define FLEX_TX_FRAGMENT_CHARS (PCSG_TX_MAX_MESSAGE_LENGTH / FLEX_TX_MAX_FRAGMENTS)
-#define FLEX_TX_BUFFER_BYTES \
-    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FAST_FRAME_BYTES)
+#define FLEX_TX_BUFFER_BYTES                                                \
+    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FAST_FRAME_BYTES + \
+     FLEX_TX_TAIL_BYTES)
 
 /*
  * Clock carried by the frame. Time of hour is not a field: FLEX derives it
@@ -83,6 +92,7 @@ struct FlexTxEncoder {
     size_t bit_index;
     // Where the frames start, the acquisition burst being of either length.
     size_t frame_base;
+    uint8_t frames;
     bool fast;
     bool inverted;
     bool lead_in_pending;
@@ -402,7 +412,6 @@ static bool flex_tx_write_frame(
             flex_tx_write_interleaved(output, &frame_words[block * 8U]);
         }
     }
-    for(uint8_t i = 0; i < 4U; i++) *(*output)++ = 0xAA;
     return true;
 }
 
@@ -444,11 +453,13 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     const size_t ers_bytes = (size_t)ers_cycles * 12U;
     flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(ers_bytes));
 
-    // A tone-only page and a test beacon are one frame with nothing to split.
+    // A tone-only page is one frame with nothing to split; a test beacon is a
+    // run of consecutive frames carrying no pages at all.
     const uint8_t fragments =
-        (config->test_beacon || message_length == 0U) ?
-            1U :
-            (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
+        config->test_beacon  ? FLEX_TX_TEST_FRAMES :
+        message_length == 0U ? 1U :
+                               (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) /
+                                         FLEX_TX_FRAGMENT_CHARS);
     if(fragments > FLEX_TX_MAX_FRAGMENTS) return false;
 
     /*
@@ -462,15 +473,27 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     flex_tx_write_ers(&output, ers_cycles);
     encoder->frame_base = ers_bytes;
     for(uint8_t i = 0; i < fragments; i++) {
-        const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
-        const size_t remaining = message_length - offset;
-        spec.fragment = (i == 0U) ? 3U : (uint8_t)((i - 1U) % 3U);
-        spec.continuation = (uint8_t)(i + 1U) < fragments;
-        spec.text = config->message + offset;
-        spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
+        if(config->test_beacon) {
+            // No pages to carry, so none of the message fields apply. Slicing
+            // an empty message would underflow `remaining` below.
+            spec.fragment = 0U;
+            spec.continuation = false;
+            spec.text = config->message;
+            spec.length = 0U;
+        } else {
+            const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
+            const size_t remaining = message_length - offset;
+            spec.fragment = (i == 0U) ? 3U : (uint8_t)((i - 1U) % 3U);
+            spec.continuation = (uint8_t)(i + 1U) < fragments;
+            spec.text = config->message + offset;
+            spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
+        }
         if(!flex_tx_write_frame(&output, config, &spec, true)) return false;
         flex_tx_clock_advance(&spec);
     }
+    // One flush tail for the whole transmission, after the last frame.
+    for(uint8_t i = 0; i < FLEX_TX_TAIL_BYTES; i++) *output++ = 0xAA;
+    encoder->frames = fragments;
     encoder->byte_count = output - encoder->bytes;
     furi_check(encoder->byte_count <= sizeof(encoder->bytes));
 
@@ -494,9 +517,10 @@ static bool flex_tx_bit_is_fast(const FlexTxEncoder* encoder, size_t bit_index) 
     if(!encoder->fast) return false;
     const size_t byte = bit_index / 8U;
     if(byte < encoder->frame_base) return false;
-    const size_t into = (byte - encoder->frame_base) % FLEX_TX_FAST_FRAME_BYTES;
-    return into >= FLEX_TX_HEAD_BYTES &&
-           into < FLEX_TX_FAST_FRAME_BYTES - FLEX_TX_TAIL_BYTES;
+    const size_t into_frames = byte - encoder->frame_base;
+    // Past the last frame is the flush tail, which is slow again.
+    if(into_frames >= (size_t)encoder->frames * FLEX_TX_FAST_FRAME_BYTES) return false;
+    return (into_frames % FLEX_TX_FAST_FRAME_BYTES) >= FLEX_TX_HEAD_BYTES;
 }
 
 static uint32_t flex_tx_bit_period(bool fast) {

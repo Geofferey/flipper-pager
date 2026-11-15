@@ -1,7 +1,13 @@
 #include "../pocsag_pager_app_i.h"
 
-/** Quiet time between test beacon bursts. */
-#define PCSG_TX_BEACON_PAUSE_MS 2000U
+/*
+ * Beacon burst period, start to start, matching the test page of the FLEX
+ * network measured on air at 929.4625 MHz: FLEX_TX_TEST_FRAMES consecutive
+ * frames as one keyed burst, repeating every 60 s to within a millisecond.
+ * The burst itself is 1.875 s per frame, so the quiet time is whatever is left
+ * of the period rather than a constant of its own.
+ */
+#define PCSG_TX_BEACON_PERIOD_MS 60000U
 
 static void pocsag_pager_scene_tx_confirm_callback(
     GuiButtonType result,
@@ -100,6 +106,7 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
     if(event.type == SceneManagerEventTypeCustom && event.event == PCSGCustomEventTxSend) {
         const PCSGTxStartStatus status = pcsg_tx_start(app);
         if(status == PCSGTxStartOk) {
+            app->tx_burst_tick = furi_get_tick();
             pocsag_pager_scene_tx_confirm_show_result(
                 app,
                 app->tx_config.test_beacon ?
@@ -121,9 +128,14 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
         return true;
     }
     if(event.type == SceneManagerEventTypeTick && app->tx_pause_pending) {
-        if(furi_get_tick() - app->tx_pause_tick <
-           furi_ms_to_ticks(PCSG_TX_BEACON_PAUSE_MS)) {
-            return true;
+        const uint32_t period = furi_ms_to_ticks(PCSG_TX_BEACON_PERIOD_MS);
+        if(furi_get_tick() - app->tx_burst_tick < period) return true;
+        // Advance the schedule by one period rather than restarting it from
+        // now, so the 100 ms tick this is checked on cannot accumulate into a
+        // drifting cadence. A burst that overran its slot resyncs instead.
+        app->tx_burst_tick += period;
+        if(furi_get_tick() - app->tx_burst_tick >= period) {
+            app->tx_burst_tick = furi_get_tick();
         }
         app->tx_pause_pending = false;
         if(pcsg_tx_start(app) != PCSGTxStartOk) {
@@ -142,7 +154,6 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
          * left alone so it does not flicker once a burst.
          */
         if(app->tx_config.test_beacon) {
-            app->tx_pause_tick = furi_get_tick();
             app->tx_pause_pending = true;
             return true;
         }

@@ -87,9 +87,11 @@ struct POCSAGPagerApp {
     FlexTxEncoder* flex_tx_encoder;
     PocsagTxConfig tx_config;
     uint8_t tx_config_selected_index;
-    // Gap between test beacon bursts; the tick it started, not its deadline,
-    // so the comparison survives the tick counter wrapping.
-    uint32_t tx_pause_tick;
+    // Tick the current test beacon burst was scheduled for. It advances by one
+    // beacon period at a time rather than from "now", so the 100 ms scene tick
+    // cannot accumulate into a drifting cadence. Unsigned differences keep the
+    // comparisons right across a tick counter wrap.
+    uint32_t tx_burst_tick;
     bool tx_pause_pending;
 
     // Review Messages
