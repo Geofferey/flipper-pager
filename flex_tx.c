@@ -41,7 +41,10 @@
  */
 #define FLEX_TX_FIW_BYTES   4U
 #define FLEX_TX_SYNC2_BYTES 5U
-#define FLEX_TX_TAIL_BYTES  4U
+// Flush tail, sent once after the last frame. The network measured at
+// 929.4625 MHz holds alternating bits roughly 100 ms past the end of a frame
+// before dropping the carrier, which is 20 bytes at 1600 baud.
+#define FLEX_TX_TAIL_BYTES  20U
 #define FLEX_TX_HEAD_BYTES  (FLEX_TX_SYNC1_BYTES + FLEX_TX_FIW_BYTES)
 #define FLEX_TX_FAST_FRAME_BYTES \
     (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 2U + 11U * 64U)
