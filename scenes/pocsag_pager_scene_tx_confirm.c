@@ -1,13 +1,28 @@
 #include "../pocsag_pager_app_i.h"
 
 /*
- * Beacon period, burst start to burst start: two 1.875 s FLEX frame slots. A
- * FLEX network measured on air at 929.4625 MHz keys one frame every second
- * slot, so a frame of air is followed by an equal quiet gap. The frame is
- * exactly 1.875 s, so the gap is whatever is left of the period rather than a
- * constant of its own.
+ * Beacon period, burst start to burst start. A FLEX network measured on air at
+ * 929.4625 MHz keys one frame every second slot, so a frame of air is followed
+ * by an equal quiet gap and the period is two 1.875 s slots. The gap is
+ * whatever is left of the period rather than a constant of its own, so a burst
+ * that ran three frames has already used the slot after it and pushes the next
+ * burst out to four slots.
  */
-#define PCSG_TX_BEACON_PERIOD_MS 3750U
+static uint32_t pocsag_pager_scene_tx_beacon_period_ms(POCSAGPagerApp* app) {
+    return (uint32_t)(app->tx_burst_frames + 1U) * FLEX_TX_FRAME_MS;
+}
+
+// The burst in flight decides when the next one is due, so its length is read
+// while its encoder is still alive: completion frees it.
+static uint8_t pocsag_pager_scene_tx_burst_frames(POCSAGPagerApp* app) {
+    return app->flex_tx_encoder ? flex_tx_encoder_frames(app->flex_tx_encoder) : 1U;
+}
+
+static void pocsag_pager_scene_tx_sequence_advance(POCSAGPagerApp* app) {
+    if(++app->tx_config.sequence_number > PCSG_TX_SEQUENCE_MAX) {
+        app->tx_config.sequence_number = 1U;
+    }
+}
 
 static void pocsag_pager_scene_tx_confirm_callback(
     GuiButtonType result,
@@ -55,8 +70,11 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
     // An empty message sends a tone-only page, so say so rather than show a gap.
     char sequence[PCSG_TX_SEQUENCE_CHARS];
     const char* body;
-    if(app->tx_config.message_mode == PagerTxMessageTestBeacon) {
-        body = "\e#TEST beacon\e#\nSync and clock BIWs, no pages,\nrepeating";
+    if(app->tx_config.message_mode == PagerTxMessageBeacon) {
+        body = "\e#Beacon\e#\nSync and clock BIWs, no pages,\nrepeating";
+    } else if(app->tx_config.message_mode == PagerTxMessageBeaconSeq) {
+        body = "\e#Beacon + Seq\e#\nSync and clock BIWs, repeating,\n"
+               "carrying the sequential page\nonce a minute";
     } else if(app->tx_config.message_mode == PagerTxMessageSequence) {
         snprintf(
             sequence, sizeof(sequence), PCSG_TX_SEQUENCE_FORMAT, app->tx_config.sequence_number);
@@ -114,10 +132,13 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
         const PCSGTxStartStatus status = pcsg_tx_start(app);
         if(status == PCSGTxStartOk) {
             app->tx_burst_tick = furi_get_tick();
+            app->tx_burst_frames = pocsag_pager_scene_tx_burst_frames(app);
             pocsag_pager_scene_tx_confirm_show_result(
                 app,
-                app->tx_config.message_mode == PagerTxMessageTestBeacon ?
-                    "\e#TEST beacon\e#\n\nSync and clock BIWs\nBack stops" :
+                app->tx_config.message_mode == PagerTxMessageBeaconSeq ?
+                    "\e#Beacon + Seq\e#\n\nPage once a minute\nBack stops" :
+                app->tx_config.message_mode == PagerTxMessageBeacon ?
+                    "\e#Beacon\e#\n\nSync and clock BIWs\nBack stops" :
                     "\e#Transmitting...\e#\n\nBack cancels",
                 NULL);
             notification_message(app->notifications, &sequence_blink_magenta_10);
@@ -135,7 +156,8 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
         return true;
     }
     if(event.type == SceneManagerEventTypeTick && app->tx_pause_pending) {
-        const uint32_t period = furi_ms_to_ticks(PCSG_TX_BEACON_PERIOD_MS);
+        const uint32_t period =
+            furi_ms_to_ticks(pocsag_pager_scene_tx_beacon_period_ms(app));
         if(furi_get_tick() - app->tx_burst_tick < period) return true;
         // Advance the schedule by one period rather than restarting it from
         // now, so the 100 ms tick this is checked on cannot accumulate into a
@@ -149,7 +171,9 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
             pocsag_pager_scene_tx_confirm_show_result(
                 app, "\e#Cannot transmit\e#\n\nCheck address, message,\nfrequency and mode", NULL);
             notification_message(app->notifications, &sequence_error);
+            return true;
         }
+        app->tx_burst_frames = pocsag_pager_scene_tx_burst_frames(app);
         return true;
     }
     if(event.type == SceneManagerEventTypeTick && pcsg_tx_complete(app)) {
@@ -160,7 +184,10 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
          * frame words describing a slot that has already passed. The screen is
          * left alone so it does not flicker once a burst.
          */
-        if(app->tx_config.message_mode == PagerTxMessageTestBeacon) {
+        if(pager_tx_mode_is_beacon(app->tx_config.message_mode)) {
+            // A beacon burst longer than one frame is the periodic page, so
+            // the number moves on only once a page has actually gone out.
+            if(app->tx_burst_frames > 1U) pocsag_pager_scene_tx_sequence_advance(app);
             app->tx_pause_pending = true;
             return true;
         }
@@ -177,9 +204,7 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
                 sizeof(sent),
                 "\e#Page sent\e#\n\nSequential number %04u",
                 app->tx_config.sequence_number);
-            if(++app->tx_config.sequence_number > PCSG_TX_SEQUENCE_MAX) {
-                app->tx_config.sequence_number = 1U;
-            }
+            pocsag_pager_scene_tx_sequence_advance(app);
             snprintf(next, sizeof(next), "Send %04u", app->tx_config.sequence_number);
             pocsag_pager_scene_tx_confirm_show_result(app, sent, next);
             notification_message(app->notifications, &sequence_success);

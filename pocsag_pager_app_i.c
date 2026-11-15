@@ -218,12 +218,12 @@ PCSGTxStartStatus pcsg_tx_start(POCSAGPagerApp* app) {
     }
 
     /*
-     * Sequence mode renders its body here rather than into the stored message,
-     * so a typed message survives a trip through the mode and back.
+     * The sequence modes render their body here rather than into the stored
+     * message, so a typed message survives a trip through them and back.
      */
     const PocsagTxConfig* config = &app->tx_config;
     PocsagTxConfig sequence;
-    if(config->message_mode == PagerTxMessageSequence) {
+    if(pager_tx_mode_is_sequence(config->message_mode)) {
         sequence = *config;
         snprintf(
             sequence.message,

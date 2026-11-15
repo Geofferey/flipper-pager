@@ -27,15 +27,26 @@ typedef enum {
 
 /*
  * What a transmission carries. The order is the order of the Message row's
- * choices, so the row's index is the mode; the FLEX-only one is last, which is
- * what lets POCSAG offer the same row one choice shorter.
+ * choices, so the row's index is the mode, and the FLEX-only ones come last,
+ * which is what lets POCSAG offer the same row two choices shorter.
  */
 typedef enum {
     PagerTxMessageTyped,
     PagerTxMessageSequence,
-    PagerTxMessageTestBeacon,
+    PagerTxMessageBeacon,
+    PagerTxMessageBeaconSeq,
     PagerTxMessageModeCount,
 } PagerTxMessageMode;
+
+/** Repeats until Back, and needs the FLEX clock BIWs, so POCSAG has neither. */
+static inline bool pager_tx_mode_is_beacon(PagerTxMessageMode mode) {
+    return mode >= PagerTxMessageBeacon;
+}
+
+/** Carries the numbered periodic page, on a button press or once a minute. */
+static inline bool pager_tx_mode_is_sequence(PagerTxMessageMode mode) {
+    return mode == PagerTxMessageSequence || mode == PagerTxMessageBeaconSeq;
+}
 
 typedef struct {
     PagerTxProtocol protocol;

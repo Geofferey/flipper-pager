@@ -84,6 +84,10 @@
 #define FLEX_TX_BUFFER_BYTES \
     (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FAST_FRAME_BYTES)
 
+// Where the periodic page sits: frame 7 of every 32. 32 frames is 60.000 s.
+#define FLEX_TX_SEQ_FRAME_GROUP 32U
+#define FLEX_TX_SEQ_FRAME       7U
+
 /*
  * Clock carried by the frame. Time of hour is not a field: FLEX derives it
  * from where the frame sits in the cycle, so the FIW's cycle and frame numbers
@@ -99,7 +103,6 @@
 #define FLEX_TX_PRE_FIW_MS(ers_bytes) \
     ((((ers_bytes) + FLEX_TX_SYNC1_BYTES) * 8U * 1000U) / FLEX_TX_BAUD)
 #define FLEX_TX_GPS_UTC_OFFSET_S 18U
-#define FLEX_TX_FRAME_MS         1875U
 #define FLEX_TX_CYCLE_MS         240000U
 #define FLEX_TX_HOUR_MS          3600000U
 
@@ -359,6 +362,9 @@ typedef struct {
     uint8_t signature;
     const char* text;
     size_t length;
+    // Sync and the clock, addressing nobody. A burst can mix idle frames with
+    // a page, so it is a property of the frame rather than of the mode.
+    bool idle;
 } FlexTxFrameSpec;
 
 // Steps to the next frame, carrying into the cycle and the hour.
@@ -396,11 +402,11 @@ static bool flex_tx_write_frame(
         for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
     }
 
-    const bool test = config->message_mode == PagerTxMessageTestBeacon;
-    const bool tone_only = !test && spec->length == 0U;
+    const bool idle = spec->idle;
+    const bool tone_only = !idle && spec->length == 0U;
     uint32_t message_words[32];
     uint8_t message_word_count = 0;
-    if(!test && !tone_only) {
+    if(!idle && !tone_only) {
         message_word_count = flex_tx_encode_alpha(
             spec->text,
             spec->length,
@@ -418,16 +424,16 @@ static bool flex_tx_write_frame(
     for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
         frame_words[i] = (i & 1U) ? 0x00000000U : 0xFFFFFFFFU;
     }
-    // Words 1 and 2 are the clock; BIW1 points the address past them. A test
-    // beacon starts the address field where the vector field starts, which is
+    // Words 1 and 2 are the clock; BIW1 points the address past them. An idle
+    // frame starts the address field where the vector field starts, which is
     // an empty one: sync and the clock, carrying no pages at all.
     const uint8_t address_start = 3U;
-    const uint8_t vector_start = test ? address_start : 4U;
+    const uint8_t vector_start = idle ? address_start : 4U;
     const uint8_t message_start = 5U;
     frame_words[0] = flex_tx_biw1(address_start, vector_start);
     frame_words[1] = flex_tx_biw_time(spec->hour);
     frame_words[2] = flex_tx_biw_zone();
-    if(!test) {
+    if(!idle) {
         frame_words[address_start] = flex_tx_short_address(config->ric);
         frame_words[vector_start] = tone_only ?
                                         flex_tx_tone_vector() :
@@ -459,7 +465,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     furi_assert(encoder);
     furi_assert(config);
 
-    const bool test = config->message_mode == PagerTxMessageTestBeacon;
+    const bool beacon = pager_tx_mode_is_beacon(config->message_mode);
     const size_t message_length = strnlen(config->message, sizeof(config->message));
     // An empty message is a tone-only page, not a refusal.
     if(config->protocol != PagerTxProtocolFlex ||
@@ -481,15 +487,34 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         .message_number = message_number,
         .signature = flex_tx_signature(config->message, message_length),
     };
-    const size_t lead_bytes = test ? FLEX_TX_TEST_PREAMBLE_BYTES : FLEX_TX_ERS_BYTES;
+    const size_t lead_bytes = beacon ? FLEX_TX_TEST_PREAMBLE_BYTES : FLEX_TX_ERS_BYTES;
     flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(lead_bytes));
 
-    // A tone-only page and a test beacon are one frame with nothing to split.
-    const uint8_t fragments =
-        (test || message_length == 0U) ?
-            1U :
-            (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) / FLEX_TX_FRAGMENT_CHARS);
-    if(fragments > FLEX_TX_MAX_FRAGMENTS) return false;
+    /*
+     * A beacon burst is a single idle frame, except that Beacon + Seq carries
+     * the periodic page in frame 7 of every 32, which is once every 60.000 s.
+     * The measured network sends that page as the middle frame of frames 6, 7
+     * and 8 keyed back to back: one preamble and one tail around 5.625 s of
+     * frames, holding the air through the odd slot the cadence leaves quiet.
+     * Bursts step two slots at a time, so exactly one of 6 and 7 falls in each
+     * group of 32 whichever parity the beacon started on.
+     */
+    uint8_t frames;
+    uint8_t page_frame = 0U;
+    if(beacon) {
+        const uint8_t slot = spec.frame % FLEX_TX_SEQ_FRAME_GROUP;
+        const bool page = config->message_mode == PagerTxMessageBeaconSeq &&
+                          (slot == FLEX_TX_SEQ_FRAME - 1U || slot == FLEX_TX_SEQ_FRAME);
+        frames = page ? 3U : 1U;
+        page_frame = page ? 1U : frames;
+    } else {
+        // A tone-only page is one frame with nothing to split.
+        frames = (message_length == 0U) ?
+                     1U :
+                     (uint8_t)((message_length + FLEX_TX_FRAGMENT_CHARS - 1U) /
+                               FLEX_TX_FRAGMENT_CHARS);
+    }
+    if(frames > FLEX_TX_MAX_FRAGMENTS) return false;
 
     /*
      * One acquisition burst and one frame. The page carries the retrieval
@@ -499,17 +524,21 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
      * a repeat apart, so repeating is not required of a sender.
      */
     uint8_t* output = encoder->bytes;
-    if(test) {
+    if(beacon) {
         flex_tx_write_preamble(&output, FLEX_TX_TEST_PREAMBLE_BITS);
     } else {
         flex_tx_write_ers(&output, FLEX_TX_ERS_CYCLES);
     }
     encoder->frame_base = lead_bytes;
-    for(uint8_t i = 0; i < fragments; i++) {
-        const size_t offset = (size_t)i * FLEX_TX_FRAGMENT_CHARS;
+    for(uint8_t i = 0; i < frames; i++) {
+        spec.idle = beacon && i != page_frame;
+        // A beacon's page is a whole message in one frame, so it reads from
+        // the start of the text wherever in the burst that frame sits.
+        const uint8_t part = beacon ? 0U : i;
+        const size_t offset = (size_t)part * FLEX_TX_FRAGMENT_CHARS;
         const size_t remaining = message_length - offset;
-        spec.fragment = (i == 0U) ? 3U : (uint8_t)((i - 1U) % 3U);
-        spec.continuation = (uint8_t)(i + 1U) < fragments;
+        spec.fragment = (part == 0U) ? 3U : (uint8_t)((part - 1U) % 3U);
+        spec.continuation = !beacon && (uint8_t)(part + 1U) < frames;
         spec.text = config->message + offset;
         spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
         if(!flex_tx_write_frame(&output, config, &spec, true)) return false;
@@ -517,7 +546,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     }
     // The tail is a tone, not bits, so it is emitted by the yield.
     encoder->tail_index = 0;
-    encoder->frames = fragments;
+    encoder->frames = frames;
     encoder->byte_count = output - encoder->bytes;
     furi_check(encoder->byte_count <= sizeof(encoder->bytes));
 
@@ -529,6 +558,11 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     encoder->lead_in_pending = config->inverted;
     encoder->tail_pending = true;
     return true;
+}
+
+uint8_t flex_tx_encoder_frames(const FlexTxEncoder* encoder) {
+    furi_assert(encoder);
+    return encoder->frames;
 }
 
 static bool flex_tx_wire_bit(const FlexTxEncoder* encoder, size_t bit_index) {

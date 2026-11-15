@@ -106,36 +106,44 @@ static void pocsag_pager_scene_tx_show_address(POCSAGPagerApp* app) {
 
 /*
  * The message row doubles as a mode picker: left and right choose between the
- * typed message, SEQ, which sends a numbered test page and counts up a number
- * on every send, and TEST, which beacons sync and the clock BIWs with no pages
- * behind them. Only FLEX has those BIWs, so POCSAG stops one choice short.
+ * typed message, SEQ, which sends a numbered test page and counts the number
+ * up on every send, Beacon, which repeats sync and the clock BIWs with no
+ * pages behind them, and Beacon + Seq, which is that beacon carrying the
+ * numbered page once a minute. The last two need the FLEX clock BIWs, so
+ * POCSAG stops where they start.
  */
 static void pocsag_pager_scene_tx_show_message(POCSAGPagerApp* app) {
     VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigMessage);
     if(!item) return;
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    if(!flex && app->tx_config.message_mode == PagerTxMessageTestBeacon) {
+    if(!flex && pager_tx_mode_is_beacon(app->tx_config.message_mode)) {
         app->tx_config.message_mode = PagerTxMessageTyped;
     }
 
     variable_item_set_values_count(
-        item, flex ? PagerTxMessageModeCount : PagerTxMessageModeCount - 1U);
+        item, flex ? PagerTxMessageModeCount : PagerTxMessageBeacon);
     variable_item_set_current_value_index(item, app->tx_config.message_mode);
-    if(app->tx_config.message_mode == PagerTxMessageTestBeacon) {
-        variable_item_set_current_value_text(item, "TEST");
-        return;
-    }
 
     char text[20];
-    if(app->tx_config.message_mode == PagerTxMessageSequence) {
+    switch(app->tx_config.message_mode) {
+    case PagerTxMessageBeacon:
+        strlcpy(text, "Beacon", sizeof(text));
+        break;
+    case PagerTxMessageBeaconSeq:
+        strlcpy(text, "Bcn+Seq", sizeof(text));
+        break;
+    case PagerTxMessageSequence:
         snprintf(text, sizeof(text), "SEQ %04u", app->tx_config.sequence_number);
-    } else {
+        break;
+    default: {
         const size_t length = strlen(app->tx_config.message);
         if(length == 0U) {
-            snprintf(text, sizeof(text), "Tone only");
+            strlcpy(text, "Tone only", sizeof(text));
         } else {
             snprintf(text, sizeof(text), "%u chars", (unsigned)length);
         }
+        break;
+    }
     }
     variable_item_set_current_value_text(item, text);
 }
@@ -330,7 +338,7 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
         return true;
     }
     if(event.event == PCSGTxConfigMessage) {
-        // Only the typed mode has anything to type: SEQ and TEST build their own.
+        // Only the typed mode has anything to type: the rest build their own.
         if(app->tx_config.message_mode == PagerTxMessageTyped) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxMessageInput);
         }

@@ -87,11 +87,14 @@ struct POCSAGPagerApp {
     FlexTxEncoder* flex_tx_encoder;
     PocsagTxConfig tx_config;
     uint8_t tx_config_selected_index;
-    // Tick the current test beacon burst was scheduled for. It advances by one
+    // Tick the current beacon burst was scheduled for. It advances by one
     // beacon period at a time rather than from "now", so the 100 ms scene tick
     // cannot accumulate into a drifting cadence. Unsigned differences keep the
     // comparisons right across a tick counter wrap.
     uint32_t tx_burst_tick;
+    // Frames that burst carries, taken while its encoder still exists. It sets
+    // the period, and more than one frame means it carried the periodic page.
+    uint8_t tx_burst_frames;
     bool tx_pause_pending;
 
     // Review Messages
