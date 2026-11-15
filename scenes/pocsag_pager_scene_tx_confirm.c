@@ -93,9 +93,10 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             "Only transmit where authorized.",
             app->tx_config.frequency / 1000000U,
             (app->tx_config.frequency % 1000000U) / 100U,
-            app->tx_config.flex_4level ? "3200/4FSK" :
-                app->tx_config.flex_3200 ? "3200/2FSK" :
-                                           "1600/2FSK",
+            app->tx_config.flex_6400 ? "6400/4FSK" :
+                app->tx_config.flex_4level ? "3200/4FSK" :
+                app->tx_config.flex_3200   ? "3200/2FSK" :
+                                            "1600/2FSK",
             app->tx_config.ric,
             pcsg_tx_clock_text[app->tx_config.clock_biws & PCSG_TX_CLOCK_BOTH],
             app->tx_config.inverted ? "Inverted" : "Standard",

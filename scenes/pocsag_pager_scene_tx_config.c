@@ -22,19 +22,20 @@ static const char* const tx_function_text[] = {"0", "1", "2", "3"};
 static const char* const tx_polarity_text[] = {"Standard", "Inverted"};
 /*
  * Four-level is last and only offered when the firmware can shift the radio's
- * deviation mid-burst, so on firmware without that the row simply stops at two
+ * frequency offset mid-burst, so on firmware without that the row simply stops at two
  * choices rather than the app refusing to load.
  */
-static const char* const tx_flex_mode_text[] = {"1600/2FSK", "3200/2FSK", "3200/4FSK"};
+static const char* const tx_flex_mode_text[] = {
+    "1600/2FSK", "3200/2FSK", "3200/4FSK", "6400/4FSK"};
 
 static uint8_t pocsag_pager_scene_tx_flex_modes(void) {
-    return flex_tx_four_level_supported() ? COUNT_OF(tx_flex_mode_text) :
-                                            COUNT_OF(tx_flex_mode_text) - 1U;
+    return flex_tx_four_level_supported() ? COUNT_OF(tx_flex_mode_text) : 2U;
 }
 
 static uint8_t pocsag_pager_scene_tx_flex_mode_index(const PocsagTxConfig* config) {
-    if(!config->flex_3200) return 0U;
-    return config->flex_4level ? 2U : 1U;
+    if(config->flex_6400) return 3U;
+    if(config->flex_4level) return 2U;
+    return config->flex_3200 ? 1U : 0U;
 }
 // Indexed by the stored bit mask, so the order follows PCSG_TX_CLOCK_*.
 const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT] = {"Off", "Time", "Date", "Time+Date"};
@@ -294,7 +295,9 @@ static void pocsag_pager_scene_tx_show_protocol_options(POCSAGPagerApp* app) {
         // A saved four-level choice on firmware that cannot do it falls back.
         if(mode_index >= pocsag_pager_scene_tx_flex_modes()) {
             mode_index = 1U;
+            app->tx_config.flex_3200 = true;
             app->tx_config.flex_4level = false;
+            app->tx_config.flex_6400 = false;
         }
         variable_item_set_current_value_index(baud, mode_index);
         variable_item_set_current_value_text(baud, tx_flex_mode_text[mode_index]);
@@ -336,7 +339,8 @@ static void pocsag_pager_scene_tx_set_baud(VariableItem* item) {
         uint8_t mode_index = variable_item_get_current_value_index(item);
         if(mode_index >= pocsag_pager_scene_tx_flex_modes()) mode_index = 1U;
         app->tx_config.flex_3200 = mode_index != 0U;
-        app->tx_config.flex_4level = mode_index == 2U;
+        app->tx_config.flex_4level = mode_index >= 2U;
+        app->tx_config.flex_6400 = mode_index == 3U;
         variable_item_set_current_value_text(item, tx_flex_mode_text[mode_index]);
         return;
     }

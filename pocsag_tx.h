@@ -73,10 +73,12 @@ typedef struct {
     uint16_t baud;
     uint8_t function;
     bool inverted;
-    /** FLEX only: 3200/2-level instead of 1600/2-level. */
+    /** FLEX only: use a mode above 1600 bps. */
     bool flex_3200;
-    /** FLEX only, and only with flex_3200: 3200 bps as 1600 baud four-level. */
+    /** FLEX only: four-level modulation. */
     bool flex_4level;
+    /** FLEX only: 6400 bps as 3200 baud four-level. */
+    bool flex_6400;
     /** FLEX only: which clock BIWs to send, PCSG_TX_CLOCK_* as a bit each. */
     uint8_t clock_biws;
     /** FLEX only: the zone word's UTC code, sent with the time BIW. */

@@ -258,7 +258,7 @@ PCSGTxStartStatus pcsg_tx_start(POCSAGPagerApp* app) {
      * async callback runs in the DMA interrupt where the SPI bus is off
      * limits. The radio is put in transmit here and the pin is ours to drive.
      */
-    app->tx_four_level = flex && config->flex_4level;
+    app->tx_four_level = flex && (config->flex_4level || config->flex_6400);
     if(app->tx_four_level) {
         // The burst starves the notification service, so anything already
         // buzzing would stay on until it ends. Settle it first.

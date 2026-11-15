@@ -16,7 +16,7 @@ typedef struct FlexTxEncoder FlexTxEncoder;
 FlexTxEncoder* flex_tx_encoder_alloc(void);
 void flex_tx_encoder_free(FlexTxEncoder* encoder);
 
-/** Build one complete 1600/2FSK FLEX frame for a short-address alpha page. */
+/** Build a FLEX burst in the selected mode for a short-address page. */
 bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* config);
 
 /** Frames the prepared burst holds the air for, which is what decides when the
@@ -24,7 +24,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
 uint8_t flex_tx_encoder_frames(const FlexTxEncoder* encoder);
 
 /*
- * Four-level FLEX needs the radio's deviation shifted between symbols, which
+ * Four-level FLEX needs the radio's frequency offset shifted between symbols, which
  * means writing one CC1101 register while it is transmitting. Firmware that
  * exports furi_hal_subghz_write_reg can do that; older firmware cannot, and
  * the symbol is looked up by name rather than linked, so this app still loads

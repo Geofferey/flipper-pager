@@ -99,9 +99,48 @@ bool flex_tx_four_level_supported(void) {
 #define FLEX_TX_TAIL_750_HALVES 48U
 #define FLEX_TX_TAIL_800_US     625U
 #define FLEX_TX_TAIL_750_US     667U
-#define FLEX_TX_HEAD_BYTES  (FLEX_TX_SYNC1_BYTES + FLEX_TX_FIW_BYTES)
-#define FLEX_TX_FAST_FRAME_BYTES \
-    (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 2U + 11U * 64U)
+#define FLEX_TX_HEAD_BYTES (FLEX_TX_SYNC1_BYTES + FLEX_TX_FIW_BYTES)
+
+/*
+ * What each FLEX mode is, in one place. A block is 160 ms in every one of them,
+ * so the block size, the symbol period and the bits a symbol carries are not
+ * independent: bytes * 8 / bits is the symbol count, and that times the symbol
+ * period comes to 160 ms each time.
+ *
+ *   mode      marker  symbols/s  bits/symbol  block    payload
+ *   1600/2    0x870C       1600            1  32 B   1600 bps, phase A
+ *   3200/2    0x7B18       3200            1  64 B   3200 bps, phases A C
+ *   3200/4    0xB068       1600            2  64 B   3200 bps, phases A B
+ *   6400/4    0xDEA0       3200            2 128 B   6400 bps, phases A B C D
+ *
+ * Sync 2 is repeated so it occupies the same 25 ms whatever the rate, which is
+ * one copy per 1600 bps of payload. Markers come from flex_modes[] in
+ * protocols/flex.c, so the transmitter and this app's receiver cannot drift
+ * apart on them.
+ */
+typedef struct {
+    uint16_t marker;
+    uint16_t symbol_half_us;
+    uint8_t bits;
+    uint8_t sync2_copies;
+    uint16_t block_bytes;
+} FlexTxMode;
+
+static FlexTxMode flex_tx_mode(const PocsagTxConfig* config) {
+    if(config->flex_6400) return (FlexTxMode){0xDEA0U, 625U, 2U, 4U, 128U};
+    if(config->flex_4level) return (FlexTxMode){0xB068U, 1250U, 2U, 2U, 64U};
+    if(config->flex_3200) return (FlexTxMode){0x7B18U, 625U, 1U, 2U, 64U};
+    return (FlexTxMode){0x870CU, 1250U, 1U, 1U, 32U};
+}
+
+static uint16_t flex_tx_frame_bytes(const FlexTxMode* mode) {
+    return (uint16_t)(FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * mode->sync2_copies +
+                      11U * mode->block_bytes);
+}
+
+// The largest a frame gets, which is what the buffer has to hold: 6400/4.
+#define FLEX_TX_MAX_FRAME_BYTES \
+    (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 4U + 11U * 128U)
 
 /*
  * A message longer than one page is split into fragments, each sent as its own
@@ -115,7 +154,7 @@ bool flex_tx_four_level_supported(void) {
 #define FLEX_TX_MAX_FRAGMENTS  3U
 #define FLEX_TX_FRAGMENT_CHARS (PCSG_TX_MAX_MESSAGE_LENGTH / FLEX_TX_MAX_FRAGMENTS)
 #define FLEX_TX_BUFFER_BYTES \
-    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FAST_FRAME_BYTES)
+    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_MAX_FRAME_BYTES)
 
 // Where the periodic page sits: frame 7 of every 32. 32 frames is 60.000 s.
 #define FLEX_TX_SEQ_FRAME_GROUP 32U
@@ -148,7 +187,9 @@ struct FlexTxEncoder {
     uint8_t frames;
     // Half cycles of the tone tail already emitted.
     uint16_t tail_index;
-    bool fast;
+    FlexTxMode mode;
+    uint16_t frame_bytes;
+    uint8_t half_us_remainder;
     bool inverted;
     bool lead_in_pending;
     bool tail_pending;
@@ -411,9 +452,36 @@ static void flex_tx_write_interleaved(uint8_t** output, const uint32_t words[8])
 }
 
 /*
+ * 6400/4 runs four phases at 3200 symbols a second, two bits to a symbol: the
+ * even symbol carries A and B, the odd one C and D. The page rides in A and
+ * the other three are idle, so each bit of the interleaved block becomes four
+ * bits on air - the data bit, then three idle ones.
+ */
+static void flex_tx_write_quad(uint8_t** output, const uint32_t words[8]) {
+    uint8_t block[32];
+    uint8_t* cursor = block;
+    flex_tx_write_interleaved(&cursor, words);
+    for(uint8_t i = 0; i < sizeof(block); i++) {
+        uint32_t quad = 0;
+        for(uint8_t bit = 0; bit < 8U; bit++) {
+            const uint32_t a = (block[i] >> (7U - bit)) & 1U;
+            const uint32_t idle = (bit & 1U) ? 0U : 1U;
+            // (A,B) then (C,D), so the data bit and three copies of idle.
+            quad = (quad << 4) | (a << 3) | (idle << 2) | (idle << 1) | idle;
+        }
+        for(int8_t shift = 24; shift >= 0; shift -= 8) {
+            *(*output)++ = (uint8_t)(quad >> shift);
+        }
+    }
+}
+
+/*
  * At 3200/2-level the frame carries phases A and C, one bit of each in turn.
  * The page rides in A; C is left idle, and idle through the block interleaver
  * is the alternating pattern, so its bit is simply the bit position's parity.
+ *
+ * 3200/4 reuses this untouched: it pairs the same data bit with the same idle
+ * bit, and a four-level symbol wants exactly that as its bit_a and bit_b.
  */
 static void flex_tx_write_woven(uint8_t** output, const uint32_t words[8]) {
     uint8_t block[32];
@@ -467,34 +535,22 @@ static bool flex_tx_write_frame(
         0x39, 0x55, 0x55, 0x87, 0x0C, 0xA6, 0xC6,
     };
     static const uint8_t sync2[] = {0xAE, 0xD8, 0x45, 0x12, 0x7B};
-    const bool fast = config->flex_3200;
+    const FlexTxMode mode = flex_tx_mode(config);
 
     uint8_t* const sync1_out = *output;
     for(size_t i = 0; i < COUNT_OF(sync1); i++) *(*output)++ = sync1[i];
     /*
      * The mode marker, in place of 1600/2's 0x870C: bytes 10 and 11 carry it
      * and bytes 4 and 5 its inverse. A receiver reads this before anything
-     * else and demodulates the rest of the frame the way it says, so it has to
-     * describe the modulation actually used, not just the bit rate. Four-level
-     * carries 3200 bps as 1600 symbols a second, which is its own mode: send
-     * 3200/2's marker with four-level symbols and the receiver slices them two
-     * ways at 3200 baud and files the bits under phases A and C.
-     *
+     * else, so it must describe both the symbol rate and the number of levels.
      * Codes from flex_modes[] in protocols/flex.c.
      */
-    if(config->flex_4level) {
-        sync1_out[4] = 0x4F; // ~0xB068
-        sync1_out[5] = 0x97;
-        sync1_out[10] = 0xB0; // 1600 baud, four levels
-        sync1_out[11] = 0x68;
-    } else if(fast) {
-        sync1_out[4] = 0x84; // ~0x7B18
-        sync1_out[5] = 0xE7;
-        sync1_out[10] = 0x7B; // 3200 baud, two levels
-        sync1_out[11] = 0x18;
-    }
+    sync1_out[10] = (uint8_t)(mode.marker >> 8);
+    sync1_out[11] = (uint8_t)mode.marker;
+    sync1_out[4] = (uint8_t)~sync1_out[10];
+    sync1_out[5] = (uint8_t)~sync1_out[11];
     flex_tx_write_word(output, flex_tx_fiw(spec->cycle, spec->frame));
-    for(uint8_t pass = 0; pass < (fast ? 2U : 1U); pass++) {
+    for(uint8_t pass = 0; pass < mode.sync2_copies; pass++) {
         for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
     }
 
@@ -558,7 +614,9 @@ static bool flex_tx_write_frame(
     }
 
     for(uint8_t block = 0; block < 11U; block++) {
-        if(fast) {
+        if(mode.block_bytes == 128U) {
+            flex_tx_write_quad(output, &frame_words[block * 8U]);
+        } else if(mode.block_bytes == 64U) {
             flex_tx_write_woven(output, &frame_words[block * 8U]);
         } else {
             flex_tx_write_interleaved(output, &frame_words[block * 8U]);
@@ -670,7 +728,9 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     furi_check(encoder->byte_count <= sizeof(encoder->bytes));
 
     encoder->bit_index = 0;
-    encoder->fast = config->flex_3200;
+    encoder->mode = flex_tx_mode(config);
+    encoder->frame_bytes = flex_tx_frame_bytes(&encoder->mode);
+    encoder->half_us_remainder = 0U;
     encoder->inverted = config->inverted;
     // The async timer starts high and drops a leading low run, which would
     // cost the first burst bit. Only inverted polarity now starts low.
@@ -690,14 +750,17 @@ static bool flex_tx_wire_bit(const FlexTxEncoder* encoder, size_t bit_index) {
 
 // Frames are a fixed size, so where a bit sits in one decides its rate. The
 // tail is slow again: the decoder is back to hunting sync by then.
-static bool flex_tx_bit_is_fast(const FlexTxEncoder* encoder, size_t bit_index) {
-    if(!encoder->fast) return false;
+static bool flex_tx_bit_is_payload(const FlexTxEncoder* encoder, size_t bit_index) {
     const size_t byte = bit_index / 8U;
     if(byte < encoder->frame_base) return false;
     const size_t into_frames = byte - encoder->frame_base;
     // Past the last frame is the flush tail, which is slow again.
-    if(into_frames >= (size_t)encoder->frames * FLEX_TX_FAST_FRAME_BYTES) return false;
-    return (into_frames % FLEX_TX_FAST_FRAME_BYTES) >= FLEX_TX_HEAD_BYTES;
+    if(into_frames >= (size_t)encoder->frames * encoder->frame_bytes) return false;
+    return (into_frames % encoder->frame_bytes) >= FLEX_TX_HEAD_BYTES;
+}
+
+static bool flex_tx_bit_is_fast(const FlexTxEncoder* encoder, size_t bit_index) {
+    return encoder->mode.symbol_half_us == 625U && flex_tx_bit_is_payload(encoder, bit_index);
 }
 
 static uint32_t flex_tx_bit_period(bool fast) {
@@ -742,7 +805,6 @@ static uint32_t flex_tx_bit_period(bool fast) {
 #define FLEX_TX_CC1101_FSCTRL0 0x0CU
 #define FLEX_TX_CC1101_DEVIATN 0x15U
 #define FLEX_TX_DEVIATN_MID    0x10U // DEVIATION_E = 1, DEVIATION_M = 0
-#define FLEX_TX_SYMBOL_US      (1000000U / FLEX_TX_BAUD)
 
 typedef struct {
     FuriThread* thread;
@@ -773,26 +835,42 @@ static int32_t flex_tx_four_level_thread(void* context) {
     // Neither value yet written, so the first symbol always sets the offset.
     uint8_t offset = 0U;
     size_t bit = 0;
-    while(state->running && bit < total_bits) {
-        const FuriHalCortexTimer timer = furi_hal_cortex_timer_get(FLEX_TX_SYMBOL_US);
-
-        const bool bit_a = flex_tx_wire_bit(encoder, bit);
+    uint16_t tail = 0U;
+    const uint16_t tail_halves = FLEX_TX_TAIL_800_HALVES + FLEX_TX_TAIL_750_HALVES;
+    const uint32_t ticks_per_us = furi_hal_cortex_instructions_per_microsecond();
+    FuriHalCortexTimer timer = furi_hal_cortex_timer_get(0U);
+    while(state->running && (bit < total_bits || tail <= tail_halves)) {
+        bool bit_a;
         bool bit_b = false;
-        if(flex_tx_bit_is_fast(encoder, bit) && bit + 1U < total_bits) {
-            bit_b = flex_tx_wire_bit(encoder, bit + 1U);
-            bit += 2U;
+        uint16_t half_us = 1250U;
+        if(bit < total_bits) {
+            const bool payload = flex_tx_bit_is_payload(encoder, bit);
+            bit_a = flex_tx_wire_bit(encoder, bit);
+            const uint8_t bits = payload ? encoder->mode.bits : 1U;
+            if(bits == 2U) bit_b = flex_tx_wire_bit(encoder, bit + 1U);
+            if(payload) half_us = encoder->mode.symbol_half_us;
+            bit += bits;
         } else {
-            bit += 1U;
+            bit_a = (tail & 1U) == 0U;
+            if(tail == tail_halves) bit_a = true;
+            if(tail >= FLEX_TX_TAIL_800_HALVES && tail < tail_halves) {
+                half_us = FLEX_TX_TAIL_750_US * 2U;
+            }
+            tail++;
         }
 
-        const uint8_t want = (bit_a != bit_b) ? 0x01U : 0xFFU;
+        const bool pin = encoder->inverted ? !bit_a : bit_a;
+        const uint8_t want = (pin != bit_b) ? 0x01U : 0xFFU;
         if(want != offset) {
             offset = want;
             write_reg(FLEX_TX_CC1101_FSCTRL0, offset);
         }
-        furi_hal_gpio_write(state->data, encoder->inverted ? !bit_a : bit_a);
+        furi_hal_gpio_write(state->data, pin);
 
+        // Absolute cycle deadlines retain 312.5 us and exclude loop overhead.
+        timer.value = ticks_per_us * half_us / 2U;
         furi_hal_cortex_timer_wait(timer);
+        timer.start += timer.value;
     }
 
     write_reg(FLEX_TX_CC1101_FSCTRL0, 0x00U);
@@ -802,7 +880,10 @@ static int32_t flex_tx_four_level_thread(void* context) {
 
 bool flex_tx_four_level_start(FlexTxEncoder* encoder, const GpioPin* data) {
     furi_assert(encoder);
-    if(!flex_tx_write_reg() || !data || flex_tx_four_level.thread) return false;
+    if(!flex_tx_write_reg() || !data || flex_tx_four_level.thread ||
+       encoder->mode.bits != 2U || !encoder->byte_count) {
+        return false;
+    }
 
     flex_tx_four_level.encoder = encoder;
     flex_tx_four_level.data = data;
@@ -873,5 +954,7 @@ LevelDuration flex_tx_encoder_yield(void* context) {
      * which made the two settings mean each other's labels.
      */
     const bool async_level = encoder->inverted ? !wire_bit : wire_bit;
-    return level_duration_make(async_level, flex_tx_bit_period(fast) * run_bits);
+    const uint32_t half_us = (fast ? 625U : 1250U) * run_bits + encoder->half_us_remainder;
+    encoder->half_us_remainder = half_us & 1U;
+    return level_duration_make(async_level, half_us / 2U);
 }

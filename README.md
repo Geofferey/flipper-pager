@@ -68,12 +68,15 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   address filtering are available only during live reception.
 - **Send messages** composes an alphanumeric POCSAG page for a destination RIC.
   It can also send an alphanumeric FLEX page to a short capcode. Select the
-  protocol, frequency and polarity, enter up to 80 characters, review the
+  protocol, frequency and polarity, enter up to 80 POCSAG or 240 FLEX characters, review the
   complete page, then explicitly press Send. POCSAG supports functions 0-3 and
-  512/1200/2400 baud. FLEX transmission currently supports 1600/2FSK and short
-  capcodes 1-1933312; the CC1101 asynchronous data input cannot directly emit
-  the four frequency levels required by FLEX 3200/4FSK or 6400/4FSK. FLEX sends
-  one acquisition burst and one page, with the retrieval flag set. Use
+  512/1200/2400 baud. FLEX supports 1600/2FSK, 3200/2FSK, 3200/4FSK and
+  6400/4FSK with short capcodes 1-1933312. Four-level modes are offered only
+  when the firmware exports `furi_hal_subghz_write_reg`; the symbol is resolved
+  at runtime so the same app can still load on older firmware. These modes
+  use the internal CC1101, with a thread driving GPIO and frequency-offset
+  register writes. FLEX sends one acquisition burst, splitting long pages
+  across consecutive frames, with the retrieval flag set. Use
   Standard polarity unless the target requires an inverted signal. Optional TX
   correction offsets the carrier from -15.0 to +15.0 kHz in 0.5 kHz steps and
   defaults to Off. This is intended for licensed operators testing their own
@@ -270,7 +273,7 @@ accurate-seconds trim reads to it as standard time.
 
 ## References for the FLEX transmitter
 
-The 1600/2FSK transmitter uses the FLEX word layouts already exercised by the
+The transmitter uses the FLEX word layouts already exercised by the
 receiver and was cross-checked against PortaPack Mayhem's
 [`flex_tx` encoder](https://github.com/portapack-mayhem/mayhem-firmware/blob/next/firmware/application/external/flex_tx/ui_flex_tx.cpp).
 That reference covers Sync 1/2, FIW and BIW fields, short addresses,
@@ -278,8 +281,25 @@ alphanumeric vectors and checksums, BCH(31,21), block interleaving, ERS and the
 retrieval-flag change between original and repeated pages. The radio deviation
 and bitstream polarity use the same Mayhem
 [`proc_fsk` implementation](https://github.com/portapack-mayhem/mayhem-firmware/blob/next/firmware/baseband/proc_fsk.cpp)
-already referenced by the POCSAG transmitter. No four-level FLEX transmit mode
-is claimed by this implementation.
+already referenced by the POCSAG transmitter.
+
+The four-level transmitter combines GPIO-controlled 2-FSK with per-symbol
+`FSCTRL0` writes. Register scaling is documented in the
+[Texas Instruments CC1101 datasheet](https://www.ti.com/lit/ds/symlink/cc1101.pdf)
+(FSCTRL0 and DEVIATN). This register-driven approach needs RF validation;
+the register definitions alone do not establish settling performance at 6400 bps.
+Mode markers and A/B/C/D phase ordering follow this app's `protocols/flex.c`.
+At 6400/4, alternating symbols carry A/B and C/D at 3200 symbols/s; only A
+carries the page. Sync 1 and FIW remain at 1600 symbols/s. Timing uses cycle
+deadlines to preserve the 312.5 us symbol period and 1.875 s frame duration.
+
+`python tests/test_flex_tx.py` compiles the actual encoder and symbol thread
+with host hardware shims, then checks all four modes using the actual receiver.
+It covers sync acquisition, FIW, phase ordering, both polarities, 1-240 character
+pages, tone pages, fragments, beacons, exact timing, counter wrap and cancellation.
+Use a GCC/Clang host compiler with sanitizers, or set `CC=cl` in a Visual Studio
+developer environment for AddressSanitizer. These checks do not exercise RF
+settling or interrupt jitter on a Flipper; 6400/4 still needs an on-device test.
 
 ## References for the FLEX clock words
 
