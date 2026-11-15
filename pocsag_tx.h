@@ -25,6 +25,9 @@
 #define PCSG_TX_CLOCK_DATE  2U
 #define PCSG_TX_CLOCK_BOTH  3U
 #define PCSG_TX_CLOCK_COUNT 4U
+/** Names for the four combinations, indexed by the mask. Shared by the config
+ *  row that picks them and the review screen that reports the choice. */
+extern const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT];
 
 /** Zone codes are five bits, so 31 is the largest the zone word can carry. */
 #define PCSG_TX_UTC_CODE_MAX 31U

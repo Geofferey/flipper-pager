@@ -22,7 +22,7 @@ static const char* const tx_function_text[] = {"0", "1", "2", "3"};
 static const char* const tx_polarity_text[] = {"Standard", "Inverted"};
 static const char* const tx_flex_mode_text[] = {"1600/2FSK", "3200/2FSK"};
 // Indexed by the stored bit mask, so the order follows PCSG_TX_CLOCK_*.
-static const char* const tx_clock_text[] = {"Off", "Time", "Date", "Time+Date"};
+const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT] = {"Off", "Time", "Date", "Time+Date"};
 
 // Off is standard time, which is the bit set; On is daylight, the bit clear.
 static const char* const tx_dst_text[] = {"Off", "On"};
@@ -112,37 +112,52 @@ static void pocsag_pager_scene_tx_show_address(POCSAGPagerApp* app) {
     variable_item_set_current_value_text(item, text);
 }
 
+/*
+ * The rows that can be taken away share a skeleton: find the row, and if it is
+ * not available collapse it to the single value `disabled` names and report it
+ * as handled. A NULL `disabled` means it is the caller's to fill, with `count`
+ * values to choose from.
+ */
+static VariableItem* pocsag_pager_scene_tx_row(
+    POCSAGPagerApp* app,
+    uint8_t index,
+    uint8_t count,
+    const char* disabled) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, index);
+    if(!item) return NULL;
+    if(!disabled) {
+        variable_item_set_values_count(item, count);
+        return item;
+    }
+    variable_item_set_values_count(item, 1U);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, disabled);
+    return NULL;
+}
+
+// The zone word rides with the time, so the UTC and DST rows go when it does.
+static const char* pocsag_pager_scene_tx_zone_off(POCSAGPagerApp* app) {
+    if(app->tx_config.protocol != PagerTxProtocolFlex) return "N/A";
+    return (app->tx_config.clock_biws & PCSG_TX_CLOCK_TIME) ? NULL : "No zone";
+}
+
 // Only FLEX carries BIWs, so POCSAG has nothing to choose here.
 static void pocsag_pager_scene_tx_show_clock(POCSAGPagerApp* app) {
-    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigClock);
-    if(!item) return;
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    variable_item_set_values_count(item, flex ? PCSG_TX_CLOCK_COUNT : 1U);
-    if(!flex) {
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, "N/A");
-        return;
-    }
+    VariableItem* item = pocsag_pager_scene_tx_row(
+        app, PCSGTxConfigClock, PCSG_TX_CLOCK_COUNT, flex ? NULL : "N/A");
+    if(!item) return;
     if(app->tx_config.clock_biws > PCSG_TX_CLOCK_BOTH) {
         app->tx_config.clock_biws = PCSG_TX_CLOCK_BOTH;
     }
     variable_item_set_current_value_index(item, app->tx_config.clock_biws);
-    variable_item_set_current_value_text(item, tx_clock_text[app->tx_config.clock_biws]);
+    variable_item_set_current_value_text(item, pcsg_tx_clock_text[app->tx_config.clock_biws]);
 }
 
-// The zone word only rides with the time, so with the time off there is
-// nothing for this row to set.
 static void pocsag_pager_scene_tx_show_utc(POCSAGPagerApp* app) {
-    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigUtc);
+    VariableItem* item = pocsag_pager_scene_tx_row(
+        app, PCSGTxConfigUtc, PCSG_ZONE_COUNT, pocsag_pager_scene_tx_zone_off(app));
     if(!item) return;
-    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    const bool used = flex && (app->tx_config.clock_biws & PCSG_TX_CLOCK_TIME) != 0U;
-    variable_item_set_values_count(item, used ? PCSG_ZONE_COUNT : 1U);
-    if(!used) {
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, flex ? "No zone" : "N/A");
-        return;
-    }
     char text[12];
     const uint8_t code = app->tx_config.utc_code;
     pcsg_zone_format(pcsg_zone_minutes(code), text, sizeof(text));
@@ -150,50 +165,38 @@ static void pocsag_pager_scene_tx_show_utc(POCSAGPagerApp* app) {
     variable_item_set_current_value_text(item, text);
 }
 
-static void pocsag_pager_scene_tx_set_utc(VariableItem* item) {
-    POCSAGPagerApp* app = variable_item_get_context(item);
-    const uint8_t code = pcsg_zone_code(variable_item_get_current_value_index(item));
-    char text[12];
-    pcsg_zone_format(pcsg_zone_minutes(code), text, sizeof(text));
-    app->tx_config.utc_code = code;
-    variable_item_set_current_value_text(item, text);
-}
-
-// Rides in the zone word beside the UTC code, so it comes and goes with it.
 static void pocsag_pager_scene_tx_show_dst(POCSAGPagerApp* app) {
-    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigDst);
+    VariableItem* item = pocsag_pager_scene_tx_row(
+        app, PCSGTxConfigDst, COUNT_OF(tx_dst_text), pocsag_pager_scene_tx_zone_off(app));
     if(!item) return;
-    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    const bool used = flex && (app->tx_config.clock_biws & PCSG_TX_CLOCK_TIME) != 0U;
-    variable_item_set_values_count(item, used ? COUNT_OF(tx_dst_text) : 1U);
-    if(!used) {
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, flex ? "No zone" : "N/A");
-        return;
-    }
     const uint8_t index = app->tx_config.dst ? 1U : 0U;
     variable_item_set_current_value_index(item, index);
     variable_item_set_current_value_text(item, tx_dst_text[index]);
 }
 
+/*
+ * The setters store the choice and re-render through the show_ function above,
+ * as the Message row already did, rather than repeating how the row is drawn.
+ * Changing the clock takes the zone with it, so its two rows follow.
+ */
+static void pocsag_pager_scene_tx_set_utc(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    app->tx_config.utc_code = pcsg_zone_code(variable_item_get_current_value_index(item));
+    pocsag_pager_scene_tx_show_utc(app);
+}
+
 static void pocsag_pager_scene_tx_set_dst(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
-    const uint8_t index = variable_item_get_current_value_index(item);
-    if(index >= COUNT_OF(tx_dst_text)) return;
-    app->tx_config.dst = index != 0U;
-    variable_item_set_current_value_text(item, tx_dst_text[index]);
+    app->tx_config.dst = variable_item_get_current_value_index(item) != 0U;
+    pocsag_pager_scene_tx_show_dst(app);
 }
 
 static void pocsag_pager_scene_tx_set_clock(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
-    if(app->tx_config.protocol != PagerTxProtocolFlex) {
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, "N/A");
-        return;
+    if(app->tx_config.protocol == PagerTxProtocolFlex) {
+        app->tx_config.clock_biws = variable_item_get_current_value_index(item);
     }
-    app->tx_config.clock_biws = variable_item_get_current_value_index(item);
-    variable_item_set_current_value_text(item, tx_clock_text[app->tx_config.clock_biws]);
-    // Dropping the time word takes the zone with it, so both rows below follow.
+    pocsag_pager_scene_tx_show_clock(app);
     pocsag_pager_scene_tx_show_utc(app);
     pocsag_pager_scene_tx_show_dst(app);
 }
@@ -207,15 +210,17 @@ static void pocsag_pager_scene_tx_set_clock(VariableItem* item) {
  * POCSAG stops where they start.
  */
 static void pocsag_pager_scene_tx_show_message(POCSAGPagerApp* app) {
-    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigMessage);
-    if(!item) return;
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
     if(!flex && pager_tx_mode_is_beacon(app->tx_config.message_mode)) {
         app->tx_config.message_mode = PagerTxMessageTyped;
     }
-
-    variable_item_set_values_count(
-        item, flex ? PagerTxMessageModeCount : PagerTxMessageBeacon);
+    // Never taken away: POCSAG keeps the first two choices.
+    VariableItem* item = pocsag_pager_scene_tx_row(
+        app,
+        PCSGTxConfigMessage,
+        flex ? PagerTxMessageModeCount : PagerTxMessageBeacon,
+        NULL);
+    if(!item) return;
     variable_item_set_current_value_index(item, app->tx_config.message_mode);
 
     char text[20];

@@ -95,10 +95,7 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             (app->tx_config.frequency % 1000000U) / 100U,
             app->tx_config.flex_3200 ? "3200/2FSK" : "1600/2FSK",
             app->tx_config.ric,
-            app->tx_config.clock_biws == PCSG_TX_CLOCK_BOTH        ? "time+date" :
-                app->tx_config.clock_biws == PCSG_TX_CLOCK_TIME    ? "time" :
-                app->tx_config.clock_biws == PCSG_TX_CLOCK_DATE    ? "date" :
-                                                                     "off",
+            pcsg_tx_clock_text[app->tx_config.clock_biws & PCSG_TX_CLOCK_BOTH],
             app->tx_config.inverted ? "Inverted" : "Standard",
             correction,
             body);
