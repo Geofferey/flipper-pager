@@ -262,6 +262,12 @@ standard/daylight flag. The BIWs' coarse/accurate seconds are not used;
 continuous frame timing supplies the minutes and seconds. The receiver reads no
 date BIW, so a date this app transmits is not one it displays.
 
+Known discrepancy: the receiver reads that standard/daylight flag at word bit
+20, which the decoder datasheets referenced under the transmitter define as the
+top bit of the accurate-seconds field, the flag itself being bit 16. So the
+receiver does not see the flag the transmitter sends, and a network sending an
+accurate-seconds trim reads to it as standard time.
+
 ## References for the FLEX transmitter
 
 The 1600/2FSK transmitter uses the FLEX word layouts already exercised by the
@@ -275,46 +281,50 @@ and bitstream polarity use the same Mayhem
 already referenced by the POCSAG transmitter. No four-level FLEX transmit mode
 is claimed by this implementation.
 
-The date BIW comes from the same Mayhem `flex_tx` encoder: type 001, with the
-year as five bits counted from 1994, the day at bit 12 and the month at bit 17.
-Mapping a year past 2025 onto the most recent one with the same leap status and
-the same weekday for 1 January is Mayhem's `flex_equiv_year`, reimplemented
-here with Gauss's formula for the weekday. The time BIW anchors to frame 0 of
-the cycle, so its minute is the cycle's four-minute boundary and the pager adds
-frame * 1.875 s itself, per Mayhem's
-[flex tx/rx: fix BIW TIME encoding/decoding](https://github.com/portapack-mayhem/mayhem-firmware/pull/3368),
-which cites ARIB STD-43A. Texas Instruments' [TMS320FLEX decoder design
-manual](https://www.ti.com/lit/pdf/spra183) independently confirms that the
-time and date BIWs are the words with f = 001, 010 and 101; the field widths
-within them are from Mayhem alone and are not verified against on-air traffic,
-since neither network captured for this work sends any clock BIW.
+## References for the FLEX clock words
 
-The zone word's 32 UTC codes are Mayhem's `options_tz` table, which matches the
-offsets their `flex_rx` decoder looks up in `flex_tz_table`, and info bits 0 to
-4 carry the code as both of theirs do. Mayhem's comment on subfield 5 against
-4, citing FLEX section 3.7.2 table 3.7.2-2, is why this sends 5: subfield 4
+The date, time and system-message BIWs are implemented from two FLEX decoder
+datasheets that document the fields bit by bit and agree with each other
+throughout, both evidently written from the Motorola specification:
+
+- Philips **[PCD5008 FLEX Pager
+  Decoder](https://datasheet.octopart.com/PCD5008H-NXP-Semiconductors-datasheet-180940953.pdf)**
+  product specification, 1998, section 8.7.9 and tables 49 to 53.
+- Texas Instruments **[TMS320FLEX design
+  manual](https://www.ti.com/lit/pdf/spra183)** section 2.5, tables 2-5 to 2-8,
+  and its companion [spra193](https://www.ti.com/lit/pdf/spra193).
+
+Both number the word as four check bits, the three `f` format bits, then `s0`
+to `s13`. Taken as word bits, that puts the date's year at 7, day at 12 and
+month at 17; the time's hour at 7, minute at 12 and coarse seconds at 18; and
+the system message's subfield at 7, zone at 11, daylight flag `L` at 16 and
+accurate seconds at 18. PortaPack Mayhem's `flex_tx` encoder and the baseband
+parse in its `proc_flex.cpp` independently use those same positions, which is
+what confirmed the reading of the two tables.
+
+Three details follow from the datasheets rather than from any implementation:
+
+- The year is **modulo 32** arithmetic from 1994, so the field covers 1994 to
+  2025, then 2026 to 2057, and a receiver resolves the era. Mayhem maps a year
+  past 2025 onto an equivalent one instead; this does not.
+- `L` **set** means the transmitted hour is local standard time, clear means
+  daylight. The zone code is always the standard-time offset, which is why the
+  table has codes for -3:30 and +9:30 but none for daylight in Newfoundland or
+  Adelaide.
+- The time refers to the leading edge of the first bit of sync 1 of frame 0 of
+  the current cycle, so the minute is the cycle's own four-minute boundary and
+  a pager adds frame * 1.875 s itself. Mayhem's
+  [PR #3368](https://github.com/portapack-mayhem/mayhem-firmware/pull/3368)
+  reaches the same conclusion from ARIB STD-43A.
+
+The 32 zone codes are TI's table 2-8, which `options_tz` and `flex_tz_table` in
+Mayhem both match: code 16 is reserved, and there is no code for GMT-12 or for
+anything past GMT+12. Subfield 0101 is the Additional Time Instruction; 0100
 would also claim an Operator Messaging Address in the frame, which this never
 sends.
 
-The standard-against-daylight flag is the one place this deliberately departs
-from Mayhem. Their encoder puts it at info bit 5 and reads bits 7 to 9 as an
-extended-seconds trim; this sends it at info bit 9, word bit 20, set for
-standard time. The reason is the hospital FLEX networks in the US Pacific,
-which lives depend on and which therefore cannot be an hour out:
-
-- Mayhem's unmodified receiver adds an hour when info bit 5 is clear. Against
-  those networks it ran an hour fast once DST ended, so they do not set bit 5
-  during standard time. A receiver reading bit 20 instead agrees with them,
-  and that is what @Geofferey's `flex_rx` fork does.
-- Those networks do set bit 20 during standard time, which a decoder reading
-  bits 7 to 9 as the trim reports as an extended seconds value of 4.
-- The code is the standard-time zone, not the offset in force. The table holds
-  -3:30 and +9:30 but neither -2:30 nor +10:30, so daylight time in
-  Newfoundland or Adelaide is only expressible with a flag beside the code.
-
-The daylight half of this is untested: it was settled against networks already
-on standard time, and whether they clear bit 20 when DST resumes, or change
-the code instead, is not yet known.
+None of this is verified against on-air traffic, since neither network captured
+for this work sends any clock BIW at all.
 
 ## References for the POCSAG transmitter
 

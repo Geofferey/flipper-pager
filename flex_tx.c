@@ -168,10 +168,11 @@ static uint32_t flex_tx_biw1(uint8_t address_start, uint8_t vector_start) {
 }
 
 /*
- * Clock BIWs: type 1 is the date, type 2 the time and type 5 subfield 4 the
- * zone. Layouts and the date's 1994 year epoch are from Mayhem's flex_tx; see
- * README.md. flex_decode_clock() in protocols/flex.c reads the hour and the
- * zone and takes minutes and seconds from frame timing instead.
+ * Clock BIWs: word format 001 is the date, 010 the time and 101 the system
+ * message carrying the zone. Field layouts are from the FLEX decoder
+ * datasheets cited in README.md. flex_decode_clock() in protocols/flex.c reads
+ * the hour and the zone and takes minutes and seconds from frame timing
+ * instead.
  *
  * The time anchors to frame 0 of the cycle rather than to the frame carrying
  * it: a pager adds frame * 1.875 s itself. So the minute is the cycle's own
@@ -192,50 +193,27 @@ static uint32_t flex_tx_biw_date(uint8_t year_field, uint8_t month, uint8_t day)
 }
 
 /*
- * Subfield 5 is the Additional Time Instruction; 4 would also claim an
- * Operator Messaging Address in the frame, which this never sends. Of the ten
- * info bits, 0 to 4 are the UTC zone code, which is the standard-time zone
- * rather than the offset in force, and 9 says whether the hour is standard or
- * daylight. The hour comes from the RTC, so it is whatever the Flipper is set
- * to and the row says which that is.
+ * The system message word, whose s3 to s0 subfield is 0101. 0100 would also
+ * claim an Operator Messaging Address in the frame, which this never sends.
+ * Above that sit z4 to z0, the time zone, then L for standard against
+ * daylight, an unused bit, and S2 to S0, an accurate-seconds trim left at zero
+ * because the frame grid is already clock-synchronised.
  *
- * Mayhem's encoder puts that flag at info bit 5 instead and reads bits 7 to 9
- * as an extended-seconds trim. The Pacific networks disagree, and they are the
- * reference here; README.md has the evidence.
+ * The zone is always the standard-time offset, whatever the season, so L is
+ * what moves. That is also why the zone table has no code for daylight in
+ * Newfoundland or Adelaide: it never needs one.
  */
 static uint32_t flex_tx_biw_zone(uint8_t utc_code, bool dst) {
     uint32_t word = (5U << 4) | (5U << 7) | ((uint32_t)(utc_code & 31U) << 11);
-    // Info bit 9 is word bit 20: set is standard time, clear is daylight.
-    if(!dst) word |= 1UL << 20;
+    // L is word bit 16: set is standard time, clear is daylight.
+    if(!dst) word |= 1UL << 16;
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
-// Day of week of 1 January, 0 being Sunday, by Gauss's formula.
-static uint8_t flex_tx_jan1_dow(uint16_t year) {
-    const uint16_t y = year - 1U;
-    return (uint8_t)((1U + 5U * (y % 4U) + 4U * (y % 100U) + 6U * (y % 400U)) % 7U);
-}
-
-/*
- * Five bits from 1994 runs out at 2025, so a later year is sent as the most
- * recent one sharing its leap status and its weekday for 1 January, which is
- * what Mayhem does: the day, month and weekday a pager shows stay right even
- * though the year it prints does not. 1994 to 2025 spans a whole 28-year
- * Gregorian cycle with no century break, so a match always exists.
- */
+// Five bits of modulo 32 arithmetic from 1994, so the field covers 1994-2025,
+// then 2026-2057, and so on. The receiver resolves which era it is in.
 static uint8_t flex_tx_year_field(uint16_t year) {
-    uint16_t equivalent = year;
-    if(year < 1994U || year > 2025U) {
-        equivalent = 1994U;
-        for(uint16_t y = 2025U; y >= 1994U; y--) {
-            if(datetime_is_leap_year(y) == datetime_is_leap_year(year) &&
-               flex_tx_jan1_dow(y) == flex_tx_jan1_dow(year)) {
-                equivalent = y;
-                break;
-            }
-        }
-    }
-    return (uint8_t)((equivalent - 1994U) & 0x1FU);
+    return (uint8_t)((year - 1994U) & 0x1FU);
 }
 
 // Where the frame lands in the hour once it is actually on the air, and the
