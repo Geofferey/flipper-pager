@@ -689,6 +689,129 @@ static uint32_t flex_tx_bit_period(bool fast) {
     return 1000000U / (fast ? FLEX_TX_FAST_BAUD : FLEX_TX_BAUD);
 }
 
+/*
+ * Four-level transmission.
+ *
+ * The CC1101 has no four-level mode, so the four deviations are built from a
+ * two-level modulator plus the synthesiser's frequency offset. DEVIATN is set
+ * to the midpoint of the two FLEX levels and FSCTRL0 steps the carrier by half
+ * their difference, which puts the data pin in charge of the sign and one
+ * register bit in charge of inner against outer:
+ *
+ *   DEVIATN  M=0 E=1  = (26 MHz / 2^17) * 8 * 2 = 3173.8 Hz
+ *   FSCTRL0  +/-1 LSB = 26 MHz / 2^14          = 1586.9 Hz
+ *   together                                   = +/-4760.7 and +/-1586.9 Hz
+ *
+ * against FLEX's +/-4800 and +/-1600, so under one percent on both. It is real
+ * FSK, not a dithered approximation, so the occupied bandwidth is the same as
+ * any other FLEX transmitter - which matters on 12.5 kHz channels.
+ *
+ * The decoder's own definitions give the mapping. flex_read_data_symbol() in
+ * protocols/flex.c takes bit_a = symbol > 1 and bit_b = symbol is 1 or 2, so
+ * symbols 0..3 run from the lowest deviation up. Inverting that:
+ *
+ *   bit_a bit_b  symbol  pin   FSCTRL0
+ *     0     0      0     low    -1      -4760.7 Hz
+ *     0     1      1     low    +1      -1586.9 Hz
+ *     1     1      2     high   -1      +1586.9 Hz
+ *     1     0      3     high   +1      +4760.7 Hz
+ *
+ * which is pin = bit_a and FSCTRL0 positive when bit_a differs from bit_b. A
+ * two-level bit is bit_b = 0, so the head rides the outer levels and sync1
+ * looks exactly as it does in any other mode.
+ *
+ * This cannot run from the async transmitter: its callback is the DMA
+ * interrupt, and writing a register means taking the SPI bus. So the symbols
+ * are clocked out by a thread of our own instead.
+ */
+#define FLEX_TX_CC1101_FSCTRL0 0x0CU
+#define FLEX_TX_CC1101_DEVIATN 0x15U
+#define FLEX_TX_DEVIATN_MID    0x10U // DEVIATION_E = 1, DEVIATION_M = 0
+#define FLEX_TX_SYMBOL_US      (1000000U / FLEX_TX_BAUD)
+
+typedef struct {
+    FuriThread* thread;
+    FlexTxEncoder* encoder;
+    const GpioPin* data;
+    volatile bool running;
+    volatile bool finished;
+} FlexTxFourLevel;
+
+static FlexTxFourLevel flex_tx_four_level = {0};
+
+static int32_t flex_tx_four_level_thread(void* context) {
+    FlexTxFourLevel* state = context;
+    const FlexTxWriteReg write_reg = flex_tx_write_reg();
+    FlexTxEncoder* encoder = state->encoder;
+    const size_t total_bits = encoder->byte_count * 8U;
+
+    /*
+     * There is no sub-millisecond sleep, so the wait between symbols is a spin
+     * and this thread owns the processor for the whole burst. Highest rather
+     * than Isr: Isr sits above the kernel's own deferred work, which is no
+     * place to spend two seconds. Everything else, the display and the
+     * notification service included, stops until the burst ends.
+     */
+    furi_thread_set_current_priority(FuriThreadPriorityHighest);
+    write_reg(FLEX_TX_CC1101_DEVIATN, FLEX_TX_DEVIATN_MID);
+
+    // Neither value yet written, so the first symbol always sets the offset.
+    uint8_t offset = 0U;
+    size_t bit = 0;
+    while(state->running && bit < total_bits) {
+        const FuriHalCortexTimer timer = furi_hal_cortex_timer_get(FLEX_TX_SYMBOL_US);
+
+        const bool bit_a = flex_tx_wire_bit(encoder, bit);
+        bool bit_b = false;
+        if(flex_tx_bit_is_fast(encoder, bit) && bit + 1U < total_bits) {
+            bit_b = flex_tx_wire_bit(encoder, bit + 1U);
+            bit += 2U;
+        } else {
+            bit += 1U;
+        }
+
+        const uint8_t want = (bit_a != bit_b) ? 0x01U : 0xFFU;
+        if(want != offset) {
+            offset = want;
+            write_reg(FLEX_TX_CC1101_FSCTRL0, offset);
+        }
+        furi_hal_gpio_write(state->data, encoder->inverted ? !bit_a : bit_a);
+
+        furi_hal_cortex_timer_wait(timer);
+    }
+
+    write_reg(FLEX_TX_CC1101_FSCTRL0, 0x00U);
+    state->finished = true;
+    return 0;
+}
+
+bool flex_tx_four_level_start(FlexTxEncoder* encoder, const GpioPin* data) {
+    furi_assert(encoder);
+    if(!flex_tx_write_reg() || !data || flex_tx_four_level.thread) return false;
+
+    flex_tx_four_level.encoder = encoder;
+    flex_tx_four_level.data = data;
+    flex_tx_four_level.running = true;
+    flex_tx_four_level.finished = false;
+    flex_tx_four_level.thread = furi_thread_alloc_ex(
+        "FlexTx4", 1024, flex_tx_four_level_thread, &flex_tx_four_level);
+    if(!flex_tx_four_level.thread) return false;
+    furi_thread_start(flex_tx_four_level.thread);
+    return true;
+}
+
+bool flex_tx_four_level_complete(void) {
+    return flex_tx_four_level.thread && flex_tx_four_level.finished;
+}
+
+void flex_tx_four_level_stop(void) {
+    if(!flex_tx_four_level.thread) return;
+    flex_tx_four_level.running = false;
+    furi_thread_join(flex_tx_four_level.thread);
+    furi_thread_free(flex_tx_four_level.thread);
+    flex_tx_four_level.thread = NULL;
+}
+
 LevelDuration flex_tx_encoder_yield(void* context) {
     furi_assert(context);
     FlexTxEncoder* encoder = context;

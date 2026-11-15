@@ -2,6 +2,8 @@
 
 #include "pocsag_tx.h"
 
+#include <furi_hal_gpio.h>
+
 #define FLEX_TX_SHORT_CAPCODE_MIN 1U
 #define FLEX_TX_SHORT_CAPCODE_MAX 1933312U
 #define FLEX_TX_BAUD              1600U
@@ -29,6 +31,13 @@ uint8_t flex_tx_encoder_frames(const FlexTxEncoder* encoder);
  * there - it just does not offer the mode. See README.md.
  */
 bool flex_tx_four_level_supported(void);
+
+/** Clocks a prepared burst out as four-level symbols on `data`, from a thread
+ *  of its own because the register writes need the SPI bus. The radio must
+ *  already be in transmit. */
+bool flex_tx_four_level_start(FlexTxEncoder* encoder, const GpioPin* data);
+bool flex_tx_four_level_complete(void);
+void flex_tx_four_level_stop(void);
 
 /** Callback consumed by the Sub-GHz asynchronous transmitter. */
 LevelDuration flex_tx_encoder_yield(void* context);

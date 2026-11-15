@@ -101,6 +101,9 @@ struct POCSAGPagerApp {
     // Frames that burst carries, taken while its encoder still exists. It sets
     // the period, and more than one frame means it carried the periodic page.
     uint8_t tx_burst_frames;
+    // Transmission in flight is four-level, so it is driven by its own thread
+    // rather than the asynchronous transmitter, and stops differently.
+    bool tx_four_level;
     bool tx_pause_pending;
 
     // Review Messages

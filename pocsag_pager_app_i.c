@@ -252,6 +252,31 @@ PCSGTxStartStatus pcsg_tx_start(POCSAGPagerApp* app) {
     subghz_devices_load_preset(app->txrx->radio_device, FuriHalSubGhzPresetCustom, preset);
     subghz_devices_set_frequency(app->txrx->radio_device, tx_frequency);
 
+    /*
+     * Four-level drives the data pin from a thread instead of the asynchronous
+     * transmitter, because each symbol also moves a radio register and the
+     * async callback runs in the DMA interrupt where the SPI bus is off
+     * limits. The radio is put in transmit here and the pin is ours to drive.
+     */
+    app->tx_four_level = flex && config->flex_4level;
+    if(app->tx_four_level) {
+        // The burst starves the notification service, so anything already
+        // buzzing would stay on until it ends. Settle it first.
+        notification_message_block(app->notifications, &sequence_reset_vibro);
+        const GpioPin* data = subghz_devices_get_data_gpio(app->txrx->radio_device);
+        furi_hal_gpio_init(data, GpioModeOutputPushPull, GpioPullNo, GpioSpeedLow);
+        furi_hal_gpio_write(data, config->inverted);
+        if(!furi_hal_subghz_tx() ||
+           !flex_tx_four_level_start(app->flex_tx_encoder, data)) {
+            subghz_devices_idle(app->txrx->radio_device);
+            pcsg_tx_release_encoder(app);
+            app->tx_four_level = false;
+            return PCSGTxStartRestricted;
+        }
+        app->txrx->txrx_state = PCSGTxRxStateTx;
+        return PCSGTxStartOk;
+    }
+
     FuriHalSubGhzAsyncTxCallback tx_callback =
         flex ? flex_tx_encoder_yield : pocsag_tx_encoder_yield;
     void* tx_context = flex ? (void*)app->flex_tx_encoder : (void*)app->tx_encoder;
@@ -267,14 +292,20 @@ PCSGTxStartStatus pcsg_tx_start(POCSAGPagerApp* app) {
 
 bool pcsg_tx_complete(POCSAGPagerApp* app) {
     furi_assert(app);
-    return app->txrx->txrx_state == PCSGTxRxStateTx &&
-           subghz_devices_is_async_complete_tx(app->txrx->radio_device);
+    if(app->txrx->txrx_state != PCSGTxRxStateTx) return false;
+    return app->tx_four_level ? flex_tx_four_level_complete() :
+                                subghz_devices_is_async_complete_tx(app->txrx->radio_device);
 }
 
 void pcsg_tx_stop(POCSAGPagerApp* app) {
     furi_assert(app);
     if(app->txrx->txrx_state != PCSGTxRxStateTx) return;
-    subghz_devices_stop_async_tx(app->txrx->radio_device);
+    if(app->tx_four_level) {
+        flex_tx_four_level_stop();
+        app->tx_four_level = false;
+    } else {
+        subghz_devices_stop_async_tx(app->txrx->radio_device);
+    }
     subghz_devices_idle(app->txrx->radio_device);
     pcsg_tx_release_encoder(app);
     app->txrx->txrx_state = PCSGTxRxStateIDLE;
