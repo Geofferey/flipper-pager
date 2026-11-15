@@ -162,10 +162,15 @@ static void pcsg_log_open_index(PCSGLog* instance, const char* path) {
         }
         instance->index_open = true;
 
-        const uint64_t size = storage_file_size(instance->index_file);
-        const uint64_t records = size / sizeof(PCSGHistoryItem);
-        // Whole records only, and no more than the log could hold.
-        if(!records || size % sizeof(PCSGHistoryItem) || records > PCSG_LOG_MAX_ENTRIES) break;
+        // Bounded first so the rest is 32-bit: dividing the 64-bit size pulls
+        // in __udivmoddi4, 700 bytes of libgcc, and an index that size is not
+        // one this log wrote. The bound also subsumes the record-count check.
+        const uint64_t size64 = storage_file_size(instance->index_file);
+        if(size64 > (uint64_t)PCSG_LOG_MAX_ENTRIES * sizeof(PCSGHistoryItem)) break;
+        const uint32_t size = (uint32_t)size64;
+        const uint32_t records = size / sizeof(PCSGHistoryItem);
+        // Whole records only.
+        if(!records || size % sizeof(PCSGHistoryItem)) break;
 
         // An index for a different log would point outside this one.
         PCSGHistoryItem last;
