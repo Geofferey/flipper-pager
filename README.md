@@ -289,13 +289,32 @@ time and date BIWs are the words with f = 001, 010 and 101; the field widths
 within them are from Mayhem alone and are not verified against on-air traffic,
 since neither network captured for this work sends any clock BIW.
 
-The zone word's 32 UTC codes are Mayhem's `options_tz` table, and its layout —
-info bits 0 to 4 for the code, bit 5 for standard time against daylight, bits 7
-to 9 for an extended-seconds trim — is theirs as well, read off both their
-encoder and the `flex_rx` decoder that consumes it. Mayhem's comment on
-subfield 5 against 4, citing FLEX section 3.7.2 table 3.7.2-2, is why this
-sends 5: subfield 4 would also claim an Operator Messaging Address in the
-frame, which this never sends.
+The zone word's 32 UTC codes are Mayhem's `options_tz` table, which matches the
+offsets their `flex_rx` decoder looks up in `flex_tz_table`, and info bits 0 to
+4 carry the code as both of theirs do. Mayhem's comment on subfield 5 against
+4, citing FLEX section 3.7.2 table 3.7.2-2, is why this sends 5: subfield 4
+would also claim an Operator Messaging Address in the frame, which this never
+sends.
+
+The standard-against-daylight flag is the one place this deliberately departs
+from Mayhem. Their encoder puts it at info bit 5 and reads bits 7 to 9 as an
+extended-seconds trim; this sends it at info bit 9, word bit 20, set for
+standard time. The reason is the hospital FLEX networks in the US Pacific,
+which lives depend on and which therefore cannot be an hour out:
+
+- Mayhem's unmodified receiver adds an hour when info bit 5 is clear. Against
+  those networks it ran an hour fast once DST ended, so they do not set bit 5
+  during standard time. A receiver reading bit 20 instead agrees with them,
+  and that is what @Geofferey's `flex_rx` fork does.
+- Those networks do set bit 20 during standard time, which a decoder reading
+  bits 7 to 9 as the trim reports as an extended seconds value of 4.
+- The code is the standard-time zone, not the offset in force. The table holds
+  -3:30 and +9:30 but neither -2:30 nor +10:30, so daylight time in
+  Newfoundland or Adelaide is only expressible with a flag beside the code.
+
+The daylight half of this is untested: it was settled against networks already
+on standard time, and whether they clear bit 20 when DST resumes, or change
+the code instead, is not yet known.
 
 ## References for the POCSAG transmitter
 
