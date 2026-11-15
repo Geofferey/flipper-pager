@@ -50,19 +50,22 @@
 #define FLEX_TX_FIW_BYTES   4U
 #define FLEX_TX_SYNC2_BYTES 5U
 /*
- * Flush tail, sent once after the last frame, as the network at 929.4625 MHz
- * sends it: 75 ms of alternating bits -- 800 Hz at 1600 baud -- then a step
- * DOWN to 750 Hz for the last 30 ms, and only then does the carrier drop. It
- * does not end abruptly. 750 Hz is a half period of 16/15 bits, so sliced at
- * 1600 baud it reads as alternating with one doubled bit every 16.
+ * Flush tail, as the network at 929.4625 MHz sends it: 800 Hz, then a step
+ * DOWN to 750 Hz, then the carrier drops. Measured over 36 bursts, the step
+ * sits 74.32 ms past the end of the frame (sd 0.03 ms) and the 750 Hz run is
+ * 31.6 ms median, 21-41 ms spread.
  *
- * These 168 bits reproduce the capture byte for byte except the last, which
- * falls inside the key-down ramp: 55 x15, AA, D5, 55, 2A, AA, D4.
+ * 750 Hz is not a 1600 baud bit pattern -- that would be 2.133 bits per
+ * cycle. Every captured half cycle measured 736-769 Hz, never the 400/800 Hz
+ * pair a bit-quantised approximation produces, which is 800 Hz warbling at
+ * 100 Hz rather than a tone. So the tail is emitted as half cycles of its own
+ * instead of as bits in the buffer: the async timer takes arbitrary
+ * microsecond runs, so an exact half period costs nothing.
  */
-#define FLEX_TX_TAIL_BITS        168U
-#define FLEX_TX_TAIL_SHIFT_BIT   120U
-#define FLEX_TX_TAIL_SHIFT_PHASE 8U
-#define FLEX_TX_TAIL_BYTES       (FLEX_TX_TAIL_BITS / 8U)
+#define FLEX_TX_TAIL_800_HALVES 119U
+#define FLEX_TX_TAIL_750_HALVES 48U
+#define FLEX_TX_TAIL_800_US     625U
+#define FLEX_TX_TAIL_750_US     667U
 #define FLEX_TX_HEAD_BYTES  (FLEX_TX_SYNC1_BYTES + FLEX_TX_FIW_BYTES)
 #define FLEX_TX_FAST_FRAME_BYTES \
     (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 2U + 11U * 64U)
@@ -78,9 +81,8 @@
  */
 #define FLEX_TX_MAX_FRAGMENTS  3U
 #define FLEX_TX_FRAGMENT_CHARS (PCSG_TX_MAX_MESSAGE_LENGTH / FLEX_TX_MAX_FRAGMENTS)
-#define FLEX_TX_BUFFER_BYTES                                                \
-    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FAST_FRAME_BYTES + \
-     FLEX_TX_TAIL_BYTES)
+#define FLEX_TX_BUFFER_BYTES \
+    (FLEX_TX_ERS_BYTES + FLEX_TX_MAX_FRAGMENTS * FLEX_TX_FAST_FRAME_BYTES)
 
 /*
  * Clock carried by the frame. Time of hour is not a field: FLEX derives it
@@ -108,6 +110,8 @@ struct FlexTxEncoder {
     // Where the frames start, the acquisition burst being of either length.
     size_t frame_base;
     uint8_t frames;
+    // Half cycles of the tone tail already emitted.
+    uint16_t tail_index;
     bool fast;
     bool inverted;
     bool lead_in_pending;
@@ -296,26 +300,6 @@ static void flex_tx_write_preamble(uint8_t** output, uint16_t total_bits) {
         // 37.5 Hz at 1600 baud: half a period is 64/3 bits.
         const uint32_t phase = (uint32_t)i + FLEX_TX_TEST_PREAMBLE_PHASE;
         byte = (uint8_t)((byte << 1) | ((phase * 3U / 64U) & 1U));
-        if((i % 8U) == 7U) {
-            *(*output)++ = byte;
-            byte = 0;
-        }
-    }
-}
-
-static void flex_tx_write_tail(uint8_t** output) {
-    uint8_t byte = 0;
-    for(uint16_t i = 0; i < FLEX_TX_TAIL_BITS; i++) {
-        uint8_t level;
-        if(i < FLEX_TX_TAIL_SHIFT_BIT) {
-            level = (uint8_t)(i & 1U);
-        } else {
-            // 750 Hz: half a period is 16/15 bits.
-            const uint32_t n =
-                (uint32_t)(i - FLEX_TX_TAIL_SHIFT_BIT) + FLEX_TX_TAIL_SHIFT_PHASE;
-            level = (uint8_t)((n * 15U / 16U) & 1U);
-        }
-        byte = (uint8_t)((byte << 1) | level);
         if((i % 8U) == 7U) {
             *(*output)++ = byte;
             byte = 0;
@@ -531,8 +515,8 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         if(!flex_tx_write_frame(&output, config, &spec, true)) return false;
         flex_tx_clock_advance(&spec);
     }
-    // One flush tail for the whole transmission, after the last frame.
-    flex_tx_write_tail(&output);
+    // The tail is a tone, not bits, so it is emitted by the yield.
+    encoder->tail_index = 0;
     encoder->frames = fragments;
     encoder->byte_count = output - encoder->bytes;
     furi_check(encoder->byte_count <= sizeof(encoder->bytes));
@@ -577,6 +561,17 @@ LevelDuration flex_tx_encoder_yield(void* context) {
 
     const size_t total_bits = encoder->byte_count * 8U;
     if(encoder->bit_index >= total_bits) {
+        // 800 Hz, then a true 750 Hz, one half cycle per call. The frame's
+        // last idle bit is low, so starting high keeps the alternation going.
+        const uint16_t halves = FLEX_TX_TAIL_800_HALVES + FLEX_TX_TAIL_750_HALVES;
+        if(encoder->tail_index < halves) {
+            const bool level = (encoder->tail_index & 1U) == 0U;
+            const uint32_t us = encoder->tail_index < FLEX_TX_TAIL_800_HALVES ?
+                                    FLEX_TX_TAIL_800_US :
+                                    FLEX_TX_TAIL_750_US;
+            encoder->tail_index++;
+            return level_duration_make(encoder->inverted ? !level : level, us);
+        }
         if(encoder->tail_pending) {
             encoder->tail_pending = false;
             return level_duration_make(!encoder->inverted, flex_tx_bit_period(false));
