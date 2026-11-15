@@ -26,6 +26,9 @@
 #define PCSG_TX_CLOCK_BOTH  3U
 #define PCSG_TX_CLOCK_COUNT 4U
 
+/** Zone codes are five bits, so 31 is the largest the zone word can carry. */
+#define PCSG_TX_UTC_CODE_MAX 31U
+
 /** Body of a Sequence page; the counter is four digits, so it wraps at 9999. */
 #define PCSG_TX_SEQUENCE_FORMAT "THIS IS A TEST PERIODIC PAGE SEQUENTIAL NUMBER %04u"
 #define PCSG_TX_SEQUENCE_MAX    9999U
@@ -71,6 +74,8 @@ typedef struct {
     bool flex_3200;
     /** FLEX only: which clock BIWs to send, PCSG_TX_CLOCK_* as a bit each. */
     uint8_t clock_biws;
+    /** FLEX only: the zone word's UTC code, sent with the time BIW. */
+    uint8_t utc_code;
     /** Which body to send. Not saved. */
     PagerTxMessageMode message_mode;
     /** Sequence mode: the number this page carries. Not saved. */

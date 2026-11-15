@@ -289,6 +289,14 @@ time and date BIWs are the words with f = 001, 010 and 101; the field widths
 within them are from Mayhem alone and are not verified against on-air traffic,
 since neither network captured for this work sends any clock BIW.
 
+The zone word's 32 UTC codes are Mayhem's `options_tz` table, and its layout —
+info bits 0 to 4 for the code, bit 5 for standard time against daylight, bits 7
+to 9 for an extended-seconds trim — is theirs as well, read off both their
+encoder and the `flex_rx` decoder that consumes it. Mayhem's comment on
+subfield 5 against 4, citing FLEX section 3.7.2 table 3.7.2-2, is why this
+sends 5: subfield 4 would also claim an Operator Messaging Address in the
+frame, which this never sends.
+
 ## References for the POCSAG transmitter
 
 The encoder was independently implemented for this app from

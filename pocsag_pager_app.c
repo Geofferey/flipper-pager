@@ -287,6 +287,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->tx_config.baud = 1200;
     app->tx_config.inverted = false;
     app->tx_config.clock_biws = PCSG_TX_CLOCK_BOTH;
+    app->tx_config.utc_code = 0;
     app->tx_config.message_mode = PagerTxMessageTyped;
     app->tx_config.sequence_number = 1;
     app->filter.frequency_correction_hz = 0;

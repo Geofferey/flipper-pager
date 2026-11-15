@@ -191,9 +191,15 @@ static uint32_t flex_tx_biw_date(uint8_t year_field, uint8_t month, uint8_t day)
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
-static uint32_t flex_tx_biw_zone(void) {
-    // Bit 20 clear is daylight, which is what the hour word above is in.
-    uint32_t word = (5U << 4) | (4U << 7);
+/*
+ * Subfield 5 is the Additional Time Instruction; 4 would also claim an
+ * Operator Messaging Address in the frame, which this never sends. Of the ten
+ * info bits, 0 to 4 are the UTC zone code, 5 is clear for daylight -- the hour
+ * comes from the RTC, so it is already in whatever the Flipper is set to -- and
+ * 7 to 9 are an extended-seconds trim a clock-synced frame grid does not need.
+ */
+static uint32_t flex_tx_biw_zone(uint8_t utc_code) {
+    uint32_t word = (5U << 4) | (5U << 7) | ((uint32_t)(utc_code & 31U) << 11);
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
@@ -499,7 +505,7 @@ static bool flex_tx_write_frame(
         clock_words[clock_count++] =
             flex_tx_biw_date(spec->year_field, spec->month, spec->day);
     }
-    if(send_time) clock_words[clock_count++] = flex_tx_biw_zone();
+    if(send_time) clock_words[clock_count++] = flex_tx_biw_zone(config->utc_code);
 
     const uint8_t address_start = (uint8_t)(1U + clock_count);
     const uint8_t vector_start = idle ? address_start : (uint8_t)(address_start + 1U);
