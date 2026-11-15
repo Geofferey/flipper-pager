@@ -95,7 +95,12 @@ typedef struct {
     uint8_t hour;
     bool clock_valid; // both the hour and standard/daylight flag have arrived
     bool standard_time;
+    /** Zone code from the system message word, or FLEX_ZONE_NONE until one
+     *  arrives. It names the zone, not the offset in force. */
+    uint8_t zone;
 } FlexFrameTiming;
+
+#define FLEX_ZONE_NONE 0xFFU
 
 /** Rate at which RX_HARD_DATA is sampled: 8 samples per 3200-baud symbol. */
 #define FLEX_4FSK_SAMPLE_RATE_HZ 25600U

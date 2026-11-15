@@ -83,17 +83,40 @@ static void pocsag_pager_scene_receiver_update_statusbar(void* context) {
  * leaves the frequency line up.
  */
 #define PCSG_RX_BAR_PERIOD_MS 10000U
+// How long the last reading stays up once the network clock stops arriving.
+#define PCSG_RX_CLOCK_HOLD_MS 60000U
 
 static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
     const uint32_t period = furi_ms_to_ticks(PCSG_RX_BAR_PERIOD_MS);
     const bool show = ((furi_get_tick() - app->rx_bar_tick) / period) % 2U != 0U;
 
-    char text[12] = "";
-    uint8_t hour, minute, second;
-    if(pcsg_time_network(app, &hour, &minute, &second)) {
-        snprintf(text, sizeof(text), "%02u:%02u:%02u", hour, minute, second);
+    PCSGNetworkTime now;
+    if(pcsg_time_network(app, &now)) {
+        char text[24];
+        size_t at = 0;
+        if(now.have_zone) {
+            const int16_t m = now.zone_minutes;
+            const uint16_t mag = (uint16_t)(m < 0 ? -m : m);
+            at += snprintf(text, sizeof(text), "UTC%c%u", m < 0 ? '-' : '+', mag / 60U);
+            if(mag % 60U) at += snprintf(text + at, sizeof(text) - at, ":%02u", mag % 60U);
+            at += snprintf(text + at, sizeof(text) - at, " ");
+        }
+        snprintf(text + at, sizeof(text) - at, "%02u:%02u:%02u", now.hour, now.minute, now.second);
+        app->rx_clock_tick = furi_get_tick();
+        pcsg_view_receiver_set_clock(app->pcsg_receiver, text, show);
+        return;
     }
-    pcsg_view_receiver_set_clock(app->pcsg_receiver, text, show);
+
+    /*
+     * One frame recovered by Weak Decode clears the decoder's whole clock, and
+     * the next clock word can be a frame-0 away - minutes on a network that
+     * sends them sparsely. Dropping the reading for that long every time a
+     * page arrives is worse than holding the last one, so it stays up until
+     * the hold expires. NULL leaves the text alone and only moves the phase.
+     */
+    const bool expired = furi_get_tick() - app->rx_clock_tick >
+                         furi_ms_to_ticks(PCSG_RX_CLOCK_HOLD_MS);
+    pcsg_view_receiver_set_clock(app->pcsg_receiver, expired ? "" : NULL, show);
 }
 
 void pocsag_pager_scene_receiver_callback(PCSGCustomEvent event, void* context) {

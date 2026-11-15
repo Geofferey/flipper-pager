@@ -94,6 +94,9 @@ struct POCSAGPagerApp {
     // Tick the receiver's status bar started its cycle on, so it always opens
     // on the frequency line rather than wherever a free-running clock landed.
     uint32_t rx_bar_tick;
+    // Last tick the network clock actually read, so a reading can be held
+    // across the gap a Weak Decode frame opens in the decoder's clock.
+    uint32_t rx_clock_tick;
     uint32_t tx_burst_tick;
     // Frames that burst carries, taken while its encoder still exists. It sets
     // the period, and more than one frame means it carried the periodic page.
@@ -118,8 +121,19 @@ void pcsg_get_frequency_modulation(
     FuriString* modulation);
 bool pcsg_preset_is_flex4(const char* preset_name);
 void pcsg_time_sync(POCSAGPagerApp* app);
-/** The FLEX network's own time of day. False until its clock words arrive. */
-bool pcsg_time_network(POCSAGPagerApp* app, uint8_t* hour, uint8_t* minute, uint8_t* second);
+
+/** The FLEX network's own clock: its time of day, and the offset its zone code
+ *  and standard/daylight flag put it at. */
+typedef struct {
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+    int16_t zone_minutes;
+    bool have_zone;
+} PCSGNetworkTime;
+
+/** False until the network's clock words arrive, or while they are stale. */
+bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out);
 bool pcsg_classic_alert_request(POCSAGPagerApp* app);
 void pcsg_classic_alert_tick(POCSAGPagerApp* app);
 void pcsg_classic_alert_reset(POCSAGPagerApp* app);

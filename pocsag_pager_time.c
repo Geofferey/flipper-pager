@@ -42,16 +42,38 @@ static bool pcsg_time_frame(POCSAGPagerApp* app, FlexFrameTiming* timing, uint32
     return true;
 }
 
-bool pcsg_time_network(POCSAGPagerApp* app, uint8_t* hour, uint8_t* minute, uint8_t* second) {
+/*
+ * Zone offsets in quarter hours, indexed by the zone code, from TI's TMS320FLEX
+ * table 2-8 (see README.md). Code 16 is reserved and reads as GMT.
+ */
+static const int8_t pcsg_time_zone_quarters[32] = {
+    0,  4,   8,   12,  16,  20,  24,  28,  32,  36,  40,  44,  48,  14,  18,  22,
+    0,  23,  26,  38,  -14, -44, -40, -36, -32, -28, -24, -20, -16, -12, -8,  -4,
+};
+
+static bool pcsg_time_zone_minutes(const FlexFrameTiming* timing, int16_t* minutes) {
+    if(timing->zone >= 32U) return false;
+    int16_t offset = (int16_t)pcsg_time_zone_quarters[timing->zone] * 15;
+    // The networks name the zone's daylight offset and leave the code alone all
+    // year, so standard time is an hour back from it. Same correction the hour
+    // gets, and the same one Geofferey's Mayhem flex_rx fork applies.
+    if(timing->standard_time) offset -= 60;
+    *minutes = offset;
+    return true;
+}
+
+bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
     furi_assert(app);
+    furi_assert(out);
     FlexFrameTiming timing;
     uint32_t age_ms;
     if(!pcsg_time_frame(app, &timing, &age_ms)) return false;
     // Without the clock words there is no hour to show, only a frame position.
     if(timing.chase || !timing.clock_valid) return false;
-    const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, hour);
-    *minute = sec / 60U;
-    *second = sec % 60U;
+    const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, &out->hour);
+    out->minute = sec / 60U;
+    out->second = sec % 60U;
+    out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes);
     return true;
 }
 

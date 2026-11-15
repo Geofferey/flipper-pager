@@ -173,6 +173,7 @@ struct SubGhzProtocolDecoderFlex {
     volatile bool timing_valid;
     volatile bool timing_chase;
     volatile uint8_t timing_clock;
+    volatile uint8_t timing_zone;
 
     uint16_t sync2_count;
     uint16_t data_count;
@@ -284,6 +285,7 @@ void subghz_protocol_decoder_flex_reset_frame_timing(void* context) {
     instance->timing_sequence++;
     instance->timing_valid = false;
     instance->timing_clock = 0;
+    instance->timing_zone = FLEX_ZONE_NONE;
     instance->timing_sequence++;
 }
 
@@ -322,6 +324,8 @@ void* subghz_protocol_decoder_flex_alloc(SubGhzEnvironment* environment) {
 
     SubGhzProtocolDecoderFlex* instance = malloc(sizeof(SubGhzProtocolDecoderFlex));
     memset(instance, 0, sizeof(SubGhzProtocolDecoderFlex));
+    // Zero is GMT, so "no zone word yet" needs saying explicitly.
+    instance->timing_zone = FLEX_ZONE_NONE;
     instance->base.protocol = &subghz_protocol_flex;
     instance->generic.protocol_name = instance->base.protocol->name;
     instance->generic.result_ric = furi_string_alloc();
@@ -1312,6 +1316,7 @@ static void flex_decode_clock(
     uint8_t address_offset) {
     if(!instance->timing_valid || instance->timing_chase || chased[0]) return;
     uint8_t clock = instance->timing_clock;
+    uint8_t zone = instance->timing_zone;
     for(uint8_t i = 1; i < address_offset; i++) {
         if(!valid[i] || chased[i] || !flex_word_checksum_valid(words[i])) continue;
         const uint32_t word = words[i];
@@ -1322,11 +1327,15 @@ static void flex_decode_clock(
         } else if(type == 5U && (((word >> 7) & 15U) == 4U || ((word >> 7) & 15U) == 5U)) {
             clock = (clock & ~FLEX_CLOCK_STANDARD) | FLEX_CLOCK_HAVE_ZONE;
             if(word & (1UL << 20)) clock |= FLEX_CLOCK_STANDARD;
+            // The zone code names the zone; the flag above says which of its
+            // two offsets is in force.
+            zone = (word >> 11) & 31U;
         }
     }
-    if(clock != instance->timing_clock) {
+    if(clock != instance->timing_clock || zone != instance->timing_zone) {
         instance->timing_sequence++;
         instance->timing_clock = clock;
+        instance->timing_zone = zone;
         instance->timing_sequence++;
     }
 }
@@ -1996,6 +2005,7 @@ bool subghz_protocol_decoder_flex_get_frame_timing(void* context, FlexFrameTimin
             (clock & (FLEX_CLOCK_HAVE_HOUR | FLEX_CLOCK_HAVE_ZONE)) ==
             (FLEX_CLOCK_HAVE_HOUR | FLEX_CLOCK_HAVE_ZONE);
         timing->standard_time = (clock & FLEX_CLOCK_STANDARD) != 0;
+        timing->zone = instance->timing_zone;
         const bool valid = instance->timing_valid;
         const uint32_t after = instance->timing_sequence;
         if(before == after && !(after & 1U)) return valid;

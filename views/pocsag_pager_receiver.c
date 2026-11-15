@@ -248,36 +248,37 @@ void pcsg_view_receiver_set_clock(
         pcsg_receiver->view,
         PCSGReceiverModel * model,
         {
-            furi_string_set_str(model->time_str, time_str ? time_str : "");
+            // NULL keeps whatever reading is up; "" is how the caller clears it.
+            if(time_str) furi_string_set_str(model->time_str, time_str);
             model->show_time = show;
         },
         true);
 }
 
+// Draws one field ending at `right` and returns where the next field to its
+// left should end. An empty field takes no room and leaves no gap.
+static uint8_t pcsg_view_receiver_draw_field(Canvas* canvas, uint8_t right, const char* str) {
+    if(!str || !*str) return right;
+    canvas_draw_str_aligned(canvas, right, 62, AlignRight, AlignBottom, str);
+    return (uint8_t)(right - canvas_string_width(canvas, str) - 4U);
+}
+
 /*
- * The bottom row: the frequency, modulation and page count, or the network
- * clock in their place. It starts to the right of the Config button, whose
- * width is its label measured in the current font plus the padding, arrow and
- * shadow elements_button_left() puts around it -- a constant would be clipped
- * the moment either the label or the font changed. The count is right-aligned
- * so a five-figure total cannot run off the screen either.
+ * The bottom row, filled from the right edge so the page count sits against it
+ * and the clock lands in that same place when it is the one showing. Laying it
+ * out backwards is also what keeps it clear of the Config button, whose width
+ * is its label measured in the current font plus the padding, arrow and shadow
+ * elements_button_left() puts around it -- the old fixed left edge sat under it.
  */
 static void pcsg_view_receiver_draw_statusbar(Canvas* canvas, PCSGReceiverModel* model) {
-    uint8_t x = 2;
-    if(!model->review) {
-        // elements_button_left(): the box is the label plus 13 px of padding
-        // and arrow, then three shadow lines. Two more to clear it.
-        x = (uint8_t)(canvas_string_width(canvas, "Config") + 13U + 3U + 2U);
-    }
     if(model->show_time && !furi_string_empty(model->time_str)) {
-        canvas_draw_str(canvas, x, 62, furi_string_get_cstr(model->time_str));
+        pcsg_view_receiver_draw_field(canvas, 127, furi_string_get_cstr(model->time_str));
         return;
     }
-    canvas_draw_str(canvas, x, 62, furi_string_get_cstr(model->frequency_str));
-    x += (uint8_t)(canvas_string_width(canvas, furi_string_get_cstr(model->frequency_str)) + 4U);
-    canvas_draw_str(canvas, x, 62, furi_string_get_cstr(model->preset_str));
-    canvas_draw_str_aligned(
-        canvas, 127, 62, AlignRight, AlignBottom, furi_string_get_cstr(model->history_stat_str));
+    uint8_t right = pcsg_view_receiver_draw_field(
+        canvas, 127, furi_string_get_cstr(model->history_stat_str));
+    right = pcsg_view_receiver_draw_field(canvas, right, furi_string_get_cstr(model->preset_str));
+    pcsg_view_receiver_draw_field(canvas, right, furi_string_get_cstr(model->frequency_str));
 }
 
 void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
