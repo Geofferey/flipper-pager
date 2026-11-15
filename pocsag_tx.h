@@ -76,6 +76,8 @@ typedef struct {
     uint8_t clock_biws;
     /** FLEX only: the zone word's UTC code, sent with the time BIW. */
     uint8_t utc_code;
+    /** FLEX only: whether the hour sent is daylight time rather than standard. */
+    bool dst;
     /** Which body to send. Not saved. */
     PagerTxMessageMode message_mode;
     /** Sequence mode: the number this page carries. Not saved. */

@@ -10,6 +10,7 @@ typedef enum {
     PCSGTxConfigCorrection,
     PCSGTxConfigClock,
     PCSGTxConfigUtc,
+    PCSGTxConfigDst,
     PCSGTxConfigMessage,
     PCSGTxConfigReview,
 } PCSGTxConfigIndex;
@@ -43,6 +44,9 @@ static const struct {
 };
 // Where UTC+0 sits in the table above, which is where an unknown code lands.
 #define PCSG_TX_UTC_ZERO_INDEX 12U
+
+// Off is standard time, which is the bit set; On is daylight, the bit clear.
+static const char* const tx_dst_text[] = {"Off", "On"};
 
 #define PCSG_FREQ_CORR_COUNT                                                   \
     ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
@@ -180,6 +184,31 @@ static void pocsag_pager_scene_tx_set_utc(VariableItem* item) {
     variable_item_set_current_value_text(item, tx_utc_zones[index].text);
 }
 
+// Rides in the zone word beside the UTC code, so it comes and goes with it.
+static void pocsag_pager_scene_tx_show_dst(POCSAGPagerApp* app) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigDst);
+    if(!item) return;
+    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
+    const bool used = flex && (app->tx_config.clock_biws & PCSG_TX_CLOCK_TIME) != 0U;
+    variable_item_set_values_count(item, used ? COUNT_OF(tx_dst_text) : 1U);
+    if(!used) {
+        variable_item_set_current_value_index(item, 0);
+        variable_item_set_current_value_text(item, flex ? "No zone" : "N/A");
+        return;
+    }
+    const uint8_t index = app->tx_config.dst ? 1U : 0U;
+    variable_item_set_current_value_index(item, index);
+    variable_item_set_current_value_text(item, tx_dst_text[index]);
+}
+
+static void pocsag_pager_scene_tx_set_dst(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    const uint8_t index = variable_item_get_current_value_index(item);
+    if(index >= COUNT_OF(tx_dst_text)) return;
+    app->tx_config.dst = index != 0U;
+    variable_item_set_current_value_text(item, tx_dst_text[index]);
+}
+
 static void pocsag_pager_scene_tx_set_clock(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
     if(app->tx_config.protocol != PagerTxProtocolFlex) {
@@ -189,8 +218,9 @@ static void pocsag_pager_scene_tx_set_clock(VariableItem* item) {
     }
     app->tx_config.clock_biws = variable_item_get_current_value_index(item);
     variable_item_set_current_value_text(item, tx_clock_text[app->tx_config.clock_biws]);
-    // Dropping the time word takes the zone with it, so the row below follows.
+    // Dropping the time word takes the zone with it, so both rows below follow.
     pocsag_pager_scene_tx_show_utc(app);
+    pocsag_pager_scene_tx_show_dst(app);
 }
 
 /*
@@ -286,6 +316,7 @@ static void pocsag_pager_scene_tx_set_protocol(VariableItem* item) {
     pocsag_pager_scene_tx_show_message(app);
     pocsag_pager_scene_tx_show_clock(app);
     pocsag_pager_scene_tx_show_utc(app);
+    pocsag_pager_scene_tx_show_dst(app);
 }
 
 static void pocsag_pager_scene_tx_set_function(VariableItem* item) {
@@ -410,6 +441,14 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
         pocsag_pager_scene_tx_set_utc,
         app);
     pocsag_pager_scene_tx_show_utc(app);
+
+    variable_item_list_add(
+        app->variable_item_list,
+        "DST:",
+        COUNT_OF(tx_dst_text),
+        pocsag_pager_scene_tx_set_dst,
+        app);
+    pocsag_pager_scene_tx_show_dst(app);
 
     variable_item_list_add(
         app->variable_item_list, "Message:", 1, pocsag_pager_scene_tx_set_message, app);
