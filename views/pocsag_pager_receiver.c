@@ -69,17 +69,19 @@ typedef struct {
 
 void pcsg_receiver_rssi(PCSGReceiver* instance, float rssi) {
     furi_assert(instance);
+    // Also a per-tick caller: the bars only move in whole units, so a reading
+    // that lands on the same one is not worth a repaint.
+    bool changed = false;
     with_view_model(
         instance->view,
         PCSGReceiverModel * model,
         {
-            if(rssi < SUBGHZ_RAW_THRESHOLD_MIN) {
-                model->u_rssi = 0;
-            } else {
-                model->u_rssi = (uint8_t)(rssi - SUBGHZ_RAW_THRESHOLD_MIN);
-            }
+            const uint8_t level =
+                rssi < SUBGHZ_RAW_THRESHOLD_MIN ? 0 : (uint8_t)(rssi - SUBGHZ_RAW_THRESHOLD_MIN);
+            changed = model->u_rssi != level;
+            model->u_rssi = level;
         },
-        true);
+        changed);
 }
 
 void pcsg_view_receiver_set_lock(PCSGReceiver* pcsg_receiver, PCSGLock lock) {
@@ -244,23 +246,36 @@ void pcsg_view_receiver_set_clock(
     const char* time_str,
     bool show) {
     furi_assert(pcsg_receiver);
+    // Called on every scene tick, so it redraws only when the row would differ.
+    // Committing regardless repaints the whole screen ten times a second, which
+    // on FLEX4 is work the scene is otherwise careful not to do.
+    bool changed = false;
     with_view_model(
         pcsg_receiver->view,
         PCSGReceiverModel * model,
         {
             // NULL keeps whatever reading is up; "" is how the caller clears it.
-            if(time_str) furi_string_set_str(model->time_str, time_str);
-            model->show_time = show;
+            if(time_str && !furi_string_equal_str(model->time_str, time_str)) {
+                furi_string_set_str(model->time_str, time_str);
+                changed = model->show_time;
+            }
+            if(model->show_time != show) {
+                model->show_time = show;
+                changed = true;
+            }
         },
-        true);
+        changed);
 }
 
 // Draws one field ending at `right` and returns where the next field to its
 // left should end. An empty field takes no room and leaves no gap.
 static uint8_t pcsg_view_receiver_draw_field(Canvas* canvas, uint8_t right, const char* str) {
     if(!str || !*str) return right;
-    canvas_draw_str_aligned(canvas, right, 62, AlignRight, AlignBottom, str);
-    return (uint8_t)(right - canvas_string_width(canvas, str) - 4U);
+    // Measured once and used for both the position and the next field, where
+    // draw_str_aligned(AlignRight) would measure it a second time internally.
+    const uint8_t width = (uint8_t)canvas_string_width(canvas, str);
+    canvas_draw_str(canvas, (uint8_t)(right - width), 62, str);
+    return (uint8_t)(right - width - 4U);
 }
 
 /*

@@ -89,6 +89,11 @@ static void pocsag_pager_scene_receiver_update_statusbar(void* context) {
 static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
     const uint32_t period = furi_ms_to_ticks(PCSG_RX_BAR_PERIOD_MS);
     const bool show = ((furi_get_tick() - app->rx_bar_tick) / period) % 2U != 0U;
+    if(!show) {
+        // The frequency line has the row: nothing to read, nothing to format.
+        pcsg_view_receiver_set_clock(app->pcsg_receiver, NULL, false);
+        return;
+    }
 
     PCSGNetworkTime now;
     if(pcsg_time_network(app, &now)) {
