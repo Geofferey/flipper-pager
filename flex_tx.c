@@ -168,12 +168,26 @@ static uint32_t flex_tx_biw1(uint8_t address_start, uint8_t vector_start) {
 }
 
 /*
- * Clock BIWs, mirroring flex_decode_clock() in protocols/flex.c: type 2 holds
- * the hour, type 5 subfield 4 the zone, and the decoder needs both before it
- * will treat the clock as usable. Fields neither side reads are left zero.
+ * Clock BIWs: type 1 is the date, type 2 the time and type 5 subfield 4 the
+ * zone. Layouts and the date's 1994 year epoch are from Mayhem's flex_tx; see
+ * README.md. flex_decode_clock() in protocols/flex.c reads the hour and the
+ * zone and takes minutes and seconds from frame timing instead.
+ *
+ * The time anchors to frame 0 of the cycle rather than to the frame carrying
+ * it: a pager adds frame * 1.875 s itself. So the minute is the cycle's own
+ * four-minute boundary, and the seconds field stays zero. Fifteen cycles make
+ * an hour exactly, so a cycle never straddles one and the hour holds for every
+ * frame in it.
  */
-static uint32_t flex_tx_biw_time(uint8_t hour) {
-    uint32_t word = (2U << 4) | ((uint32_t)(hour & 31U) << 7);
+static uint32_t flex_tx_biw_time(uint8_t hour, uint8_t minute) {
+    uint32_t word = (2U << 4) | ((uint32_t)(hour & 31U) << 7) |
+                    ((uint32_t)(minute & 63U) << 12);
+    return flex_tx_encode_word(flex_tx_checksum(word));
+}
+
+static uint32_t flex_tx_biw_date(uint8_t year_field, uint8_t month, uint8_t day) {
+    uint32_t word = (1U << 4) | ((uint32_t)(year_field & 31U) << 7) |
+                    ((uint32_t)(day & 31U) << 12) | ((uint32_t)(month & 15U) << 17);
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
@@ -183,8 +197,42 @@ static uint32_t flex_tx_biw_zone(void) {
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
-// Where the frame lands in the hour once it is actually on the air.
-static void flex_tx_clock(uint8_t* cycle, uint8_t* frame, uint8_t* hour, uint32_t pre_fiw_ms) {
+// Day of week of 1 January, 0 being Sunday, by Gauss's formula.
+static uint8_t flex_tx_jan1_dow(uint16_t year) {
+    const uint16_t y = year - 1U;
+    return (uint8_t)((1U + 5U * (y % 4U) + 4U * (y % 100U) + 6U * (y % 400U)) % 7U);
+}
+
+/*
+ * Five bits from 1994 runs out at 2025, so a later year is sent as the most
+ * recent one sharing its leap status and its weekday for 1 January, which is
+ * what Mayhem does: the day, month and weekday a pager shows stay right even
+ * though the year it prints does not. 1994 to 2025 spans a whole 28-year
+ * Gregorian cycle with no century break, so a match always exists.
+ */
+static uint8_t flex_tx_year_field(uint16_t year) {
+    uint16_t equivalent = year;
+    if(year < 1994U || year > 2025U) {
+        equivalent = 1994U;
+        for(uint16_t y = 2025U; y >= 1994U; y--) {
+            if(datetime_is_leap_year(y) == datetime_is_leap_year(year) &&
+               flex_tx_jan1_dow(y) == flex_tx_jan1_dow(year)) {
+                equivalent = y;
+                break;
+            }
+        }
+    }
+    return (uint8_t)((equivalent - 1994U) & 0x1FU);
+}
+
+// Where the frame lands in the hour once it is actually on the air, and the
+// date it lands on.
+static void flex_tx_clock(
+    uint8_t* cycle,
+    uint8_t* frame,
+    uint8_t* hour,
+    DateTime* on_air,
+    uint32_t pre_fiw_ms) {
     DateTime datetime;
     furi_hal_rtc_get_datetime(&datetime);
 
@@ -197,10 +245,16 @@ static void flex_tx_clock(uint8_t* cycle, uint8_t* frame, uint8_t* hour, uint32_
         ms -= FLEX_TX_HOUR_MS;
         hours++;
     }
+    if(hours >= 24U) {
+        // The lead carried it past midnight, so the date goes with it.
+        datetime_timestamp_to_datetime(
+            datetime_datetime_to_timestamp(&datetime) + 86400U, &datetime);
+    }
 
     *cycle = ms / FLEX_TX_CYCLE_MS;
     *frame = (ms % FLEX_TX_CYCLE_MS) / FLEX_TX_FRAME_MS;
     *hour = hours % 24U;
+    *on_air = datetime;
 }
 
 static uint32_t flex_tx_short_address(uint32_t capcode) {
@@ -356,6 +410,9 @@ typedef struct {
     uint8_t cycle;
     uint8_t frame;
     uint8_t hour;
+    uint8_t year_field;
+    uint8_t month;
+    uint8_t day;
     uint8_t message_number;
     uint8_t fragment;
     bool continuation;
@@ -424,15 +481,18 @@ static bool flex_tx_write_frame(
     for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
         frame_words[i] = (i & 1U) ? 0x00000000U : 0xFFFFFFFFU;
     }
-    // Words 1 and 2 are the clock; BIW1 points the address past them. An idle
+    // Words 1 to 3 are the clock; BIW1 points the address past them. An idle
     // frame starts the address field where the vector field starts, which is
-    // an empty one: sync and the clock, carrying no pages at all.
-    const uint8_t address_start = 3U;
-    const uint8_t vector_start = idle ? address_start : 4U;
-    const uint8_t message_start = 5U;
+    // an empty one: sync and the clock, carrying no pages at all. Three is all
+    // the clock words there is room for: BIW1 holds the address offset in two
+    // bits, so word 4 is as far out as the address can start.
+    const uint8_t address_start = 4U;
+    const uint8_t vector_start = idle ? address_start : 5U;
+    const uint8_t message_start = 6U;
     frame_words[0] = flex_tx_biw1(address_start, vector_start);
-    frame_words[1] = flex_tx_biw_time(spec->hour);
-    frame_words[2] = flex_tx_biw_zone();
+    frame_words[1] = flex_tx_biw_time(spec->hour, (uint8_t)(spec->cycle * 4U));
+    frame_words[2] = flex_tx_biw_date(spec->year_field, spec->month, spec->day);
+    frame_words[3] = flex_tx_biw_zone();
     if(!idle) {
         frame_words[address_start] = flex_tx_short_address(config->ric);
         frame_words[vector_start] = tone_only ?
@@ -488,7 +548,12 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         .signature = flex_tx_signature(config->message, message_length),
     };
     const size_t lead_bytes = beacon ? FLEX_TX_TEST_PREAMBLE_BYTES : FLEX_TX_ERS_BYTES;
-    flex_tx_clock(&spec.cycle, &spec.frame, &spec.hour, FLEX_TX_PRE_FIW_MS(lead_bytes));
+    DateTime on_air;
+    flex_tx_clock(
+        &spec.cycle, &spec.frame, &spec.hour, &on_air, FLEX_TX_PRE_FIW_MS(lead_bytes));
+    spec.year_field = flex_tx_year_field(on_air.year);
+    spec.month = on_air.month;
+    spec.day = on_air.day;
 
     /*
      * A beacon burst is a single idle frame, except that Beacon + Seq carries

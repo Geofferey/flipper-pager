@@ -259,7 +259,8 @@ Hour and standard/daylight handling are adapted from Mayhem FLEX RX's
 [`network_hour`, `update_rtc`, and BIW handling](https://github.com/Geofferey/mayhem-firmware/blob/67345f64389694e45d1873587a0f052c4baed8e5/firmware/application/external/flex_rx/ui_flex_rx.cpp).
 The time BIW supplies the hour; SysInfo subtype 4/5 supplies the
 standard/daylight flag. The BIWs' coarse/accurate seconds are not used;
-continuous frame timing supplies the minutes and seconds.
+continuous frame timing supplies the minutes and seconds. The receiver reads no
+date BIW, so a date this app transmits is not one it displays.
 
 ## References for the FLEX transmitter
 
@@ -273,6 +274,20 @@ and bitstream polarity use the same Mayhem
 [`proc_fsk` implementation](https://github.com/portapack-mayhem/mayhem-firmware/blob/next/firmware/baseband/proc_fsk.cpp)
 already referenced by the POCSAG transmitter. No four-level FLEX transmit mode
 is claimed by this implementation.
+
+The date BIW comes from the same Mayhem `flex_tx` encoder: type 001, with the
+year as five bits counted from 1994, the day at bit 12 and the month at bit 17.
+Mapping a year past 2025 onto the most recent one with the same leap status and
+the same weekday for 1 January is Mayhem's `flex_equiv_year`, reimplemented
+here with Gauss's formula for the weekday. The time BIW anchors to frame 0 of
+the cycle, so its minute is the cycle's four-minute boundary and the pager adds
+frame * 1.875 s itself, per Mayhem's
+[flex tx/rx: fix BIW TIME encoding/decoding](https://github.com/portapack-mayhem/mayhem-firmware/pull/3368),
+which cites ARIB STD-43A. Texas Instruments' [TMS320FLEX decoder design
+manual](https://www.ti.com/lit/pdf/spra183) independently confirms that the
+time and date BIWs are the words with f = 001, 010 and 101; the field widths
+within them are from Mayhem alone and are not verified against on-air traffic,
+since neither network captured for this work sends any clock BIW.
 
 ## References for the POCSAG transmitter
 
