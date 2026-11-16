@@ -195,7 +195,7 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
      * falls as well as rises, the history being a rolling window.
      */
     if(app->filter.hud_show_msg_count) {
-        snprintf(text, sizeof(text), "Msg %u", pcsg_history_get_item(app->txrx->history));
+        snprintf(text, sizeof(text), "M:%u", pcsg_history_get_item(app->txrx->history));
         pocsag_pager_scene_network_info_add(
             app, PCSG_NETWORK_MID_X, PCSG_NETWORK_ROW2_Y, AlignCenter, FontSecondary, text);
     }
