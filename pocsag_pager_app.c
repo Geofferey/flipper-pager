@@ -307,7 +307,9 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->tx_config.country_code = 0;
     app->tx_config.roaming = false;
     app->tx_config.msg_number = PCSG_TX_MSG_NUMBER_AUTO;
-    app->tx_config.ers_cycles = PCSG_TX_ERS_CYCLES_DEFAULT;
+    // Default: 1.44 s of ERS ahead of a page, the captured 100 ms ahead of a
+    // beacon. A set value overrides both.
+    app->tx_config.ers_cycles = 0;
     app->filter.frequency_correction_hz = 0;
     pcsg_settings_load(app);
 

@@ -100,9 +100,16 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   and switches both SSID words on, since the flag means nothing without an
   identified system. `Msg #` is the message number carried in the alphanumeric
   header: `Auto` derives it from the clock as before, and a fixed 0-63 is sent
-  as set and counted on once the page has gone out. `ERS` is the acquisition
-  runway ahead of a page, 0 to 48 cycles of 60 ms each, default 24 (1.44 s);
-  `Off` sends none, which suits a receiver already locked to the channel.
+  as set and counted on once the page has gone out.
+
+  `ERS` is the lead-in duration ahead of a transmission, 0.24 s to 2.88 s in
+  steps of 60 ms. The two modes lead in differently: a page with the ERS code,
+  a beacon with the 37.5 Hz square wave captured from the network. `Default`
+  leaves each at the length it was measured or chosen at - 1.44 s of ERS ahead
+  of a page, 100 ms of square wave ahead of a beacon or Bcn+Seq - and any other
+  value is that duration whichever mode is sending. A scaled beacon preamble is
+  anchored at its end, so however long it runs it meets sync 1 on the same
+  phase of the square wave the capture does.
 
   BIW1 carries the address offset in two bits, so at most **three** block
   information words fit ahead of the address. With three or fewer enabled they

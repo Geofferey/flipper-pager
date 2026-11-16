@@ -30,15 +30,22 @@ static void pocsag_pager_scene_tx_params_show_toggle(VariableItem* item, bool va
     variable_item_set_current_value_text(item, tx_params_off_on[index]);
 }
 
-// Each cycle is 96 bits at 1600 baud, so 60 ms of runway apiece.
+/*
+ * Each cycle is 96 bits at 1600 baud, so 60 ms of lead-in apiece, and the row
+ * reads as the duration rather than the count. Default is the first entry
+ * because the two modes lead in at different lengths there: 1.44 s of ERS
+ * ahead of a page, the captured 100 ms of square wave ahead of a beacon. Any
+ * other value is that duration whichever mode is sending.
+ */
 static void pocsag_pager_scene_tx_params_show_ers(POCSAGPagerApp* app) {
     VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxParamsErs);
     if(!item) return;
     uint8_t cycles = app->tx_config.ers_cycles;
-    if(cycles > PCSG_TX_ERS_CYCLES_MAX) cycles = PCSG_TX_ERS_CYCLES_DEFAULT;
+    if(cycles > PCSG_TX_ERS_CYCLES_MAX) cycles = 0U;
+    app->tx_config.ers_cycles = cycles;
     variable_item_set_current_value_index(item, cycles / PCSG_TX_ERS_CYCLES_STEP);
     if(cycles == 0U) {
-        variable_item_set_current_value_text(item, "Off");
+        variable_item_set_current_value_text(item, "Default");
         return;
     }
     char text[16];

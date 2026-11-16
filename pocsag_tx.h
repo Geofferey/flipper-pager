@@ -50,8 +50,11 @@ extern const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT];
 #define PCSG_TX_MSG_NUMBER_AUTO 64U
 
 /*
- * Acquisition runway ahead of a page, in 12-byte cycles. Each is 60 ms at
- * 1600 baud, so the default is 1.44 s. Zero sends none at all.
+ * Lead-in ahead of a transmission, in 12-byte cycles. Each is 60 ms at 1600
+ * baud. Zero is the Default row entry, which leaves each mode at the length it
+ * was measured or chosen at - PCSG_TX_ERS_CYCLES_DEFAULT of the ERS code ahead
+ * of a page, and the captured square-wave preamble ahead of a beacon - while
+ * any other value is that duration whichever mode is sending.
  */
 #define PCSG_TX_ERS_CYCLES_MAX     48U
 #define PCSG_TX_ERS_CYCLES_DEFAULT 24U

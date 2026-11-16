@@ -75,6 +75,16 @@ bool flex_tx_four_level_supported(void) {
 // out byte-for-byte as captured, ending on a low run into sync1.
 #define FLEX_TX_TEST_PREAMBLE_PHASE 20U
 /*
+ * Where that captured preamble ends, which is the part worth keeping when the
+ * ERS row asks for a different length: what the phase got right is how the
+ * square wave runs into sync1, so a longer or shorter one is anchored at its
+ * end and grows backwards. Phase repeats every 128 bits - 128 * 3 / 64 is an
+ * even 6 - so the start is taken modulo that.
+ */
+#define FLEX_TX_TEST_PREAMBLE_END \
+    (FLEX_TX_TEST_PREAMBLE_PHASE + FLEX_TX_TEST_PREAMBLE_BITS)
+#define FLEX_TX_TEST_PREAMBLE_PERIOD 128U
+/*
  * 3200/2-level keeps the burst, sync1 and the FIW at 1600 -- a receiver has to
  * read the mode out of sync1 before it can know any other rate -- and runs
  * everything after them at twice that. sync2 is a fixed 25 ms, so it costs
@@ -509,10 +519,14 @@ static void flex_tx_write_word(uint8_t** output, uint32_t word) {
 }
 
 static void flex_tx_write_preamble(uint8_t** output, uint16_t total_bits) {
+    const uint32_t start =
+        (FLEX_TX_TEST_PREAMBLE_END + FLEX_TX_TEST_PREAMBLE_PERIOD -
+         (total_bits % FLEX_TX_TEST_PREAMBLE_PERIOD)) %
+        FLEX_TX_TEST_PREAMBLE_PERIOD;
     uint8_t byte = 0;
     for(uint16_t i = 0; i < total_bits; i++) {
         // 37.5 Hz at 1600 baud: half a period is 64/3 bits.
-        const uint32_t phase = (uint32_t)i + FLEX_TX_TEST_PREAMBLE_PHASE;
+        const uint32_t phase = (uint32_t)i + start;
         byte = (uint8_t)((byte << 1) | ((phase * 3U / 64U) & 1U));
         if((i % 8U) == 7U) {
             *(*output)++ = byte;
@@ -866,11 +880,21 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         .message_number = message_number,
         .signature = flex_tx_signature(config->message, message_length),
     };
+    /*
+     * The ERS row is a lead-in duration, and the two modes lead in differently:
+     * a page with the ERS code, a beacon with the square wave the network was
+     * captured sending. Default leaves each at the length it was measured or
+     * chosen at - 24 cycles ahead of a page, 100 ms ahead of a beacon - and a
+     * set value scales whichever one this burst uses.
+     */
     const uint8_t ers_cycles = config->ers_cycles > PCSG_TX_ERS_CYCLES_MAX ?
-                                   PCSG_TX_ERS_CYCLES_DEFAULT :
+                                   0U :
                                    config->ers_cycles;
+    const uint8_t page_cycles = ers_cycles ? ers_cycles : PCSG_TX_ERS_CYCLES_DEFAULT;
     const size_t lead_bytes =
-        beacon ? FLEX_TX_TEST_PREAMBLE_BYTES : (size_t)ers_cycles * FLEX_TX_ERS_CYCLE_BYTES;
+        beacon ? (ers_cycles ? (size_t)ers_cycles * FLEX_TX_ERS_CYCLE_BYTES :
+                               FLEX_TX_TEST_PREAMBLE_BYTES) :
+                 (size_t)page_cycles * FLEX_TX_ERS_CYCLE_BYTES;
     DateTime on_air;
     flex_tx_clock(
         &spec.cycle, &spec.frame, &spec.hour, &on_air, FLEX_TX_PRE_FIW_MS(lead_bytes));
@@ -913,9 +937,9 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
      */
     uint8_t* output = encoder->bytes;
     if(beacon) {
-        flex_tx_write_preamble(&output, FLEX_TX_TEST_PREAMBLE_BITS);
+        flex_tx_write_preamble(&output, (uint16_t)(lead_bytes * 8U));
     } else {
-        flex_tx_write_ers(&output, ers_cycles);
+        flex_tx_write_ers(&output, page_cycles);
     }
     encoder->frame_base = lead_bytes;
     for(uint8_t i = 0; i < frames; i++) {
