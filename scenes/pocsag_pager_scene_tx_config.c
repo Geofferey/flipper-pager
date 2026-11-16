@@ -1,14 +1,21 @@
 #include "../pocsag_pager_app_i.h"
 
+/*
+ * FLEX params and Function are each other's opposite - one applies only to
+ * FLEX, the other only to POCSAG - so they share a row rather than each
+ * sitting there reading "N/A" under the protocol it has nothing to say about.
+ * Sharing it also keeps the indices below fixed, which matters because the
+ * list cannot be rebuilt from a row's own callback: that runs holding the
+ * view model, and reset would take it again.
+ */
 typedef enum {
-    PCSGTxConfigProtocol,
     PCSGTxConfigFrequency,
-    PCSGTxConfigRic,
-    PCSGTxConfigFunction,
+    PCSGTxConfigProtocol,
+    PCSGTxConfigParamsOrFunction,
     PCSGTxConfigBaud,
     PCSGTxConfigPolarity,
     PCSGTxConfigCorrection,
-    PCSGTxConfigParams,
+    PCSGTxConfigRic,
     PCSGTxConfigMessage,
     PCSGTxConfigReview,
 } PCSGTxConfigIndex;
@@ -194,15 +201,37 @@ static VariableItem* pocsag_pager_scene_tx_row(
     return NULL;
 }
 
-// The clock words and everything else FLEX-only live in their own scene, so
-// this row is a door rather than a setting.
-static void pocsag_pager_scene_tx_show_params(POCSAGPagerApp* app) {
-    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
+/*
+ * The shared row. Under FLEX it is a door to the clock words and everything
+ * else FLEX-only, with one value and nothing to step through; under POCSAG it
+ * is the function digit. Which one it is follows the protocol, so neither is
+ * ever shown to the protocol it does not belong to.
+ */
+static void pocsag_pager_scene_tx_show_params_or_function(POCSAGPagerApp* app) {
     VariableItem* item =
-        pocsag_pager_scene_tx_row(app, PCSGTxConfigParams, 1U, flex ? NULL : "N/A");
+        variable_item_list_get(app->variable_item_list, PCSGTxConfigParamsOrFunction);
     if(!item) return;
-    variable_item_set_current_value_index(item, 0);
-    variable_item_set_current_value_text(item, ">");
+    if(app->tx_config.protocol == PagerTxProtocolFlex) {
+        variable_item_set_item_label(item, "FLEX params:");
+        variable_item_set_values_count(item, 1U);
+        variable_item_set_current_value_index(item, 0);
+        variable_item_set_current_value_text(item, ">");
+        return;
+    }
+    variable_item_set_item_label(item, "Function:");
+    variable_item_set_values_count(item, COUNT_OF(tx_function_text));
+    if(app->tx_config.function >= COUNT_OF(tx_function_text)) app->tx_config.function = 0U;
+    variable_item_set_current_value_index(item, app->tx_config.function);
+    variable_item_set_current_value_text(item, tx_function_text[app->tx_config.function]);
+}
+
+static void pocsag_pager_scene_tx_set_params_or_function(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    // The FLEX door has a single value, so left and right never reach here.
+    if(app->tx_config.protocol != PagerTxProtocolFlex) {
+        app->tx_config.function = variable_item_get_current_value_index(item);
+    }
+    pocsag_pager_scene_tx_show_params_or_function(app);
 }
 
 /*
@@ -258,23 +287,17 @@ static void pocsag_pager_scene_tx_set_message(VariableItem* item) {
 }
 
 /*
- * Label, choice count and value of the address, function and baud rows all
+ * Label, choice count and value of the address, shared and baud rows all
  * depend on the protocol. on_enter adds those three as placeholders and calls
  * this, so the rules live here only, rather than once here and once there.
  */
 static void pocsag_pager_scene_tx_show_protocol_options(POCSAGPagerApp* app) {
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
     pocsag_pager_scene_tx_show_address(app);
+    pocsag_pager_scene_tx_show_params_or_function(app);
 
-    VariableItem* function =
-        variable_item_list_get(app->variable_item_list, PCSGTxConfigFunction);
     VariableItem* baud = variable_item_list_get(app->variable_item_list, PCSGTxConfigBaud);
-    if(!function || !baud) return;
-    variable_item_set_values_count(function, flex ? 1U : COUNT_OF(tx_function_text));
-    variable_item_set_current_value_index(function, flex ? 0U : app->tx_config.function);
-    variable_item_set_current_value_text(
-        function, flex ? "N/A" : tx_function_text[app->tx_config.function]);
-
+    if(!baud) return;
     variable_item_set_item_label(baud, flex ? "Mode:" : "Baud:");
     variable_item_set_values_count(
         baud, flex ? pocsag_pager_scene_tx_flex_modes() : COUNT_OF(tx_baud_values));
@@ -302,21 +325,8 @@ static void pocsag_pager_scene_tx_set_protocol(VariableItem* item) {
     variable_item_set_current_value_text(item, tx_protocol_text[app->tx_config.protocol]);
     pocsag_pager_scene_tx_clamp_address(app);
     pocsag_pager_scene_tx_show_protocol_options(app);
-    // The beacon modes and the FLEX params are FLEX only, so leaving FLEX has
-    // to drop them.
+    // The beacon modes are FLEX only, so leaving FLEX has to drop them.
     pocsag_pager_scene_tx_show_message(app);
-    pocsag_pager_scene_tx_show_params(app);
-}
-
-static void pocsag_pager_scene_tx_set_function(VariableItem* item) {
-    POCSAGPagerApp* app = variable_item_get_context(item);
-    if(app->tx_config.protocol == PagerTxProtocolFlex) {
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, "N/A");
-        return;
-    }
-    app->tx_config.function = variable_item_get_current_value_index(item);
-    variable_item_set_current_value_text(item, tx_function_text[app->tx_config.function]);
 }
 
 static void pocsag_pager_scene_tx_set_baud(VariableItem* item) {
@@ -368,15 +378,6 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
 
     item = variable_item_list_add(
         app->variable_item_list,
-        "Protocol:",
-        PagerTxProtocolCount,
-        pocsag_pager_scene_tx_set_protocol,
-        app);
-    variable_item_set_current_value_index(item, app->tx_config.protocol);
-    variable_item_set_current_value_text(item, tx_protocol_text[app->tx_config.protocol]);
-
-    item = variable_item_list_add(
-        app->variable_item_list,
         "Frequency:",
         subghz_setting_get_frequency_count(app->setting),
         pocsag_pager_scene_tx_set_frequency,
@@ -384,15 +385,22 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, pocsag_pager_scene_tx_frequency_index(app));
     pocsag_pager_scene_tx_show_frequency(item, app->tx_config.frequency);
 
+    item = variable_item_list_add(
+        app->variable_item_list,
+        "Protocol:",
+        PagerTxProtocolCount,
+        pocsag_pager_scene_tx_set_protocol,
+        app);
+    variable_item_set_current_value_index(item, app->tx_config.protocol);
+    variable_item_set_current_value_text(item, tx_protocol_text[app->tx_config.protocol]);
+
     // Placeholders: show_protocol_options() below sets the label, choice count
     // and value of all three according to the protocol.
-    variable_item_list_add(
-        app->variable_item_list, "RIC:", 1, pocsag_pager_scene_tx_set_address, app);
     variable_item_list_add(
         app->variable_item_list,
         "Function:",
         COUNT_OF(tx_function_text),
-        pocsag_pager_scene_tx_set_function,
+        pocsag_pager_scene_tx_set_params_or_function,
         app);
     variable_item_list_add(
         app->variable_item_list,
@@ -400,7 +408,6 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
         COUNT_OF(tx_baud_values),
         pocsag_pager_scene_tx_set_baud,
         app);
-    pocsag_pager_scene_tx_show_protocol_options(app);
 
     item = variable_item_list_add(
         app->variable_item_list,
@@ -424,8 +431,10 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     // Show what is stored, not the index: a typed value need not be on the grid.
     pocsag_pager_scene_tx_show_correction(item, app->filter.frequency_correction_hz);
 
-    variable_item_list_add(app->variable_item_list, "FLEX params:", 1, NULL, app);
-    pocsag_pager_scene_tx_show_params(app);
+    variable_item_list_add(
+        app->variable_item_list, "RIC:", 1, pocsag_pager_scene_tx_set_address, app);
+    // Fills in the three rows added as placeholders above.
+    pocsag_pager_scene_tx_show_protocol_options(app);
 
     variable_item_list_add(
         app->variable_item_list, "Message:", 1, pocsag_pager_scene_tx_set_message, app);
@@ -471,7 +480,8 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
         scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneCapcodeInput);
         return true;
     }
-    if(event.event == PCSGTxConfigParams) {
+    if(event.event == PCSGTxConfigParamsOrFunction) {
+        // Only FLEX has a scene behind this row; POCSAG's function is set on it.
         if(app->tx_config.protocol == PagerTxProtocolFlex) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxParams);
         }
