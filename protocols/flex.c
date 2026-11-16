@@ -28,6 +28,18 @@
 #define FLEX_MAX_MESSAGE_CHARS 512U
 #define FLEX_TRUNCATION_MARK   "..."
 #define FLEX_NO_WORD           0xFFU
+/*
+ * Which of the system words have been heard, one bit each, so that a field
+ * nobody has sent is told apart from one sent as zero. Roaming needs two bits
+ * for the same reason: it is a flag, and "not heard" is not "clear".
+ */
+#define FLEX_SYS_HAVE_SSID1   0x01U
+#define FLEX_SYS_HAVE_SSID2   0x02U
+#define FLEX_SYS_HAVE_DATE    0x04U
+#define FLEX_SYS_HAVE_EXT_SEC 0x08U
+#define FLEX_SYS_HAVE_ROAMING 0x10U
+#define FLEX_SYS_ROAMING      0x20U
+
 // One byte for the hour and whether its two BIWs have arrived.
 #define FLEX_CLOCK_HOUR_MASK 0x1FU
 #define FLEX_CLOCK_HAVE_HOUR 0x20U
@@ -175,6 +187,21 @@ struct SubGhzProtocolDecoderFlex {
     volatile uint8_t timing_clock;
     volatile uint8_t timing_zone;
 
+    /*
+     * What the network says about itself. Published under its own sequence
+     * counter, as the clock is: the reader is a UI thread and the writer the
+     * decoder, so an odd count means a write is in progress.
+     */
+    volatile uint32_t system_sequence;
+    volatile uint8_t system_have;
+    volatile uint16_t system_local_id;
+    volatile uint8_t system_coverage;
+    volatile uint16_t system_country;
+    volatile uint8_t system_year_field;
+    volatile uint8_t system_month;
+    volatile uint8_t system_day;
+    volatile uint8_t system_ext_sec;
+
     uint16_t sync2_count;
     uint16_t data_count;
     uint16_t data_bit_count;
@@ -287,6 +314,11 @@ void subghz_protocol_decoder_flex_reset_frame_timing(void* context) {
     instance->timing_clock = 0;
     instance->timing_zone = FLEX_ZONE_NONE;
     instance->timing_sequence++;
+    // What the network said about itself goes with its clock: both describe
+    // the network being listened to, and that is what has just been dropped.
+    instance->system_sequence++;
+    instance->system_have = 0;
+    instance->system_sequence++;
 }
 
 static void flex_publish_timing(SubGhzProtocolDecoderFlex* instance) {
@@ -394,7 +426,8 @@ static bool flex_select_mode(SubGhzProtocolDecoderFlex* instance, uint16_t sync_
     return false;
 }
 
-static bool flex_fiw_fields_valid(uint32_t fiw, uint8_t* cycle, uint8_t* frame) {
+static bool
+    flex_fiw_fields_valid(uint32_t fiw, uint8_t* cycle, uint8_t* frame, bool* roaming) {
     fiw &= 0x001FFFFFUL;
     uint8_t checksum = fiw & 0x0F;
     checksum += (fiw >> 4) & 0x0F;
@@ -406,18 +439,41 @@ static bool flex_fiw_fields_valid(uint32_t fiw, uint8_t* cycle, uint8_t* frame) 
 
     *cycle = (fiw >> 4) & 0x0F;
     *frame = (fiw >> 8) & 0x7F;
+    // Bit 15: the frame is carried by a system a subscriber is visiting.
+    *roaming = (fiw & (1UL << 15)) != 0;
     if(*cycle > 14U) return false;
     return true;
+}
+
+/*
+ * The roaming flag rides in the word that gates the whole frame, so it is
+ * published here rather than with the block information words. A soft-decoded
+ * FIW is trusted for the frame but not for this: the clock words hold the same
+ * line, and a flag recovered from a guess is not worth showing as fact.
+ */
+static void flex_publish_roaming(SubGhzProtocolDecoderFlex* instance, bool roaming) {
+    uint8_t have = instance->system_have | FLEX_SYS_HAVE_ROAMING;
+    if(roaming) {
+        have |= FLEX_SYS_ROAMING;
+    } else {
+        have &= (uint8_t)~FLEX_SYS_ROAMING;
+    }
+    if(have == instance->system_have) return;
+    instance->system_sequence++;
+    instance->system_have = have;
+    instance->system_sequence++;
 }
 
 static bool flex_decode_fiw(SubGhzProtocolDecoderFlex* instance) {
     uint8_t cycle;
     uint8_t frame;
+    bool roaming;
     uint32_t fiw = instance->fiw_raw;
-    if(flex_bch_correct(&fiw) >= 0 && flex_fiw_fields_valid(fiw, &cycle, &frame)) {
+    if(flex_bch_correct(&fiw) >= 0 && flex_fiw_fields_valid(fiw, &cycle, &frame, &roaming)) {
         instance->cycle = cycle;
         instance->frame = frame;
         instance->frame_chase = false;
+        flex_publish_roaming(instance, roaming);
         return true;
     }
 
@@ -426,7 +482,7 @@ static bool flex_decode_fiw(SubGhzProtocolDecoderFlex* instance) {
     fiw = instance->fiw_raw;
     if(instance->weak_decode && instance->four_level_path &&
        flex_bch_chase(&fiw, instance->fiw_rel) &&
-       flex_fiw_fields_valid(fiw, &cycle, &frame)) {
+       flex_fiw_fields_valid(fiw, &cycle, &frame, &roaming)) {
         instance->cycle = cycle;
         instance->frame = frame;
         instance->frame_chase = true;
@@ -1317,11 +1373,36 @@ static void flex_decode_clock(
     if(!instance->timing_valid || instance->timing_chase || chased[0]) return;
     uint8_t clock = instance->timing_clock;
     uint8_t zone = instance->timing_zone;
+
+    uint8_t have = instance->system_have;
+    uint16_t local_id = instance->system_local_id;
+    uint8_t coverage = instance->system_coverage;
+    uint16_t country = instance->system_country;
+    uint8_t year_field = instance->system_year_field;
+    uint8_t month = instance->system_month;
+    uint8_t day = instance->system_day;
+    uint8_t ext_sec = instance->system_ext_sec;
+
     for(uint8_t i = 1; i < address_offset; i++) {
         if(!valid[i] || chased[i] || !flex_word_checksum_valid(words[i])) continue;
         const uint32_t word = words[i];
         const uint8_t type = (word >> 4) & 7U;
-        if(type == 2U) {
+        if(type == 0U) {
+            // SSID1. An all-zero word fails the checksum above, so reaching
+            // here means the network really did send this one.
+            coverage = (word >> 7) & 31U;
+            local_id = (word >> 12) & 0x1FFU;
+            have |= FLEX_SYS_HAVE_SSID1;
+        } else if(type == 1U) {
+            const uint8_t m = (word >> 17) & 15U;
+            const uint8_t d = (word >> 12) & 31U;
+            if(m >= 1U && m <= 12U && d >= 1U && d <= 31U) {
+                year_field = (word >> 7) & 31U;
+                month = m;
+                day = d;
+                have |= FLEX_SYS_HAVE_DATE;
+            }
+        } else if(type == 2U) {
             const uint8_t hour = (word >> 7) & 31U;
             if(hour < 24U) clock = (clock & ~FLEX_CLOCK_HOUR_MASK) | hour | FLEX_CLOCK_HAVE_HOUR;
         } else if(type == 5U && (((word >> 7) & 15U) == 4U || ((word >> 7) & 15U) == 5U)) {
@@ -1330,6 +1411,19 @@ static void flex_decode_clock(
             // The zone code names the zone; the flag above says which of its
             // two offsets is in force.
             zone = (word >> 11) & 31U;
+            /*
+             * Accurate seconds, bits 18-20 of the same word. Bit 20 is also
+             * what the line above reads as the standard-time flag, which the
+             * datasheets put at 16 instead: the two readings cannot both be
+             * right. This reports the field as the datasheets define it and
+             * leaves the clock alone, so the screen shows both and the network
+             * itself settles which is which.
+             */
+            ext_sec = (word >> 18) & 7U;
+            have |= FLEX_SYS_HAVE_EXT_SEC;
+        } else if(type == 7U) {
+            country = (word >> 11) & 0x3FFU;
+            have |= FLEX_SYS_HAVE_SSID2;
         }
     }
     if(clock != instance->timing_clock || zone != instance->timing_zone) {
@@ -1337,6 +1431,21 @@ static void flex_decode_clock(
         instance->timing_clock = clock;
         instance->timing_zone = zone;
         instance->timing_sequence++;
+    }
+    if(have != instance->system_have || local_id != instance->system_local_id ||
+       coverage != instance->system_coverage || country != instance->system_country ||
+       year_field != instance->system_year_field || month != instance->system_month ||
+       day != instance->system_day || ext_sec != instance->system_ext_sec) {
+        instance->system_sequence++;
+        instance->system_have = have;
+        instance->system_local_id = local_id;
+        instance->system_coverage = coverage;
+        instance->system_country = country;
+        instance->system_year_field = year_field;
+        instance->system_month = month;
+        instance->system_day = day;
+        instance->system_ext_sec = ext_sec;
+        instance->system_sequence++;
     }
 }
 
@@ -2009,6 +2118,34 @@ bool subghz_protocol_decoder_flex_get_frame_timing(void* context, FlexFrameTimin
         const bool valid = instance->timing_valid;
         const uint32_t after = instance->timing_sequence;
         if(before == after && !(after & 1U)) return valid;
+    }
+}
+
+bool subghz_protocol_decoder_flex_get_system_info(void* context, FlexSystemInfo* info) {
+    furi_assert(context);
+    furi_assert(info);
+    SubGhzProtocolDecoderFlex* instance = context;
+
+    uint32_t before;
+    while(true) {
+        before = instance->system_sequence;
+        if(before & 1U) continue;
+        const uint8_t have = instance->system_have;
+        info->have_ssid1 = (have & FLEX_SYS_HAVE_SSID1) != 0;
+        info->local_id = instance->system_local_id;
+        info->coverage_zone = instance->system_coverage;
+        info->have_ssid2 = (have & FLEX_SYS_HAVE_SSID2) != 0;
+        info->country_code = instance->system_country;
+        info->have_date = (have & FLEX_SYS_HAVE_DATE) != 0;
+        info->year_field = instance->system_year_field;
+        info->month = instance->system_month;
+        info->day = instance->system_day;
+        info->have_ext_sec = (have & FLEX_SYS_HAVE_EXT_SEC) != 0;
+        info->ext_sec = instance->system_ext_sec;
+        info->have_roaming = (have & FLEX_SYS_HAVE_ROAMING) != 0;
+        info->roaming = (have & FLEX_SYS_ROAMING) != 0;
+        const uint32_t after = instance->system_sequence;
+        if(before == after && !(after & 1U)) return have != 0U;
     }
 }
 

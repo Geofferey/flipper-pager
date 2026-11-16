@@ -716,3 +716,8 @@ bool flex_sampler_get_frame_timing(const FlexSampler* instance, FlexFrameTiming*
     furi_assert(instance);
     return subghz_protocol_decoder_flex_get_frame_timing(instance->decoder, timing);
 }
+
+bool flex_sampler_get_system_info(const FlexSampler* instance, FlexSystemInfo* info) {
+    furi_assert(instance);
+    return subghz_protocol_decoder_flex_get_system_info(instance->decoder, info);
+}

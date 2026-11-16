@@ -102,6 +102,37 @@ typedef struct {
 
 #define FLEX_ZONE_NONE 0xFFU
 
+/*
+ * What the network says about itself, as opposed to what time it is. Every
+ * field stands on its own: a network need not send any of these words, and
+ * several of them arrive only in certain frames, so each carries its own
+ * "has one arrived yet" rather than reading as zero until it does.
+ *
+ * The year is kept as the field on the air, five bits of modulo 32 arithmetic
+ * from 1994, because resolving which era it names needs a clock the decoder
+ * has no business reading.
+ */
+typedef struct {
+    /** SSID1, word format 000. */
+    bool have_ssid1;
+    uint16_t local_id;
+    uint8_t coverage_zone;
+    /** SSID2, word format 111. */
+    bool have_ssid2;
+    uint16_t country_code;
+    /** Date, word format 001. */
+    bool have_date;
+    uint8_t year_field;
+    uint8_t month;
+    uint8_t day;
+    /** Accurate-seconds trim in the system message word, 0.9375 s a step. */
+    bool have_ext_sec;
+    uint8_t ext_sec;
+    /** Roaming flag of the most recent frame information word. */
+    bool have_roaming;
+    bool roaming;
+} FlexSystemInfo;
+
 /** Rate at which RX_HARD_DATA is sampled: 8 samples per 3200-baud symbol. */
 #define FLEX_4FSK_SAMPLE_RATE_HZ 25600U
 
@@ -119,6 +150,9 @@ void subghz_protocol_decoder_flex_get_stats(void* context, FlexDecoderStats* sta
 void subghz_protocol_decoder_flex_reset_frame_timing(void* context);
 /** Copy the most recent FIW timing; false until a valid FIW has arrived. */
 bool subghz_protocol_decoder_flex_get_frame_timing(void* context, FlexFrameTiming* timing);
+/** Copy what the network has said about itself; false until it has said
+ *  anything at all. Cleared with the clock by reset_frame_timing. */
+bool subghz_protocol_decoder_flex_get_system_info(void* context, FlexSystemInfo* info);
 /** True while the decoder is locked onto a frame (not hunting for sync). */
 bool subghz_protocol_decoder_flex_is_locked(void* context);
 

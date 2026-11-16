@@ -21,6 +21,9 @@ void flex_sampler_reset_frame_timing(FlexSampler* instance);
 /** Copy timing from the FLEX decoder shared by two- and four-level RX. */
 bool flex_sampler_get_frame_timing(const FlexSampler* instance, FlexFrameTiming* timing);
 
+/** Copy what the network has said about itself; false until it says anything. */
+bool flex_sampler_get_system_info(const FlexSampler* instance, FlexSystemInfo* info);
+
 /** Record this receive session's raw sample stream to a timestamped file. */
 void flex_sampler_set_capture(FlexSampler* instance, bool enable);
 
