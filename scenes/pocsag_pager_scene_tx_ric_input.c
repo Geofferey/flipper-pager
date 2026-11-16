@@ -1,33 +1,5 @@
 #include "../pocsag_pager_app_i.h"
 
-static void pocsag_pager_scene_tx_ric_input_callback(void* context, int32_t number) {
-    POCSAGPagerApp* app = context;
-    if(app->tx_config.protocol == PagerTxProtocolFlex && number != 0 &&
-       !flex_tx_capcode_valid((uint32_t)number)) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventTxRicInputInvalid);
-        return;
-    }
-    if(app->tx_config.protocol != PagerTxProtocolFlex) {
-        app->tx_config.ric[0] = number;
-    } else {
-        /*
-         * A capcode's phase is part of its address, so it is filed under the
-         * phase it belongs to rather than the entry that was open. The row
-         * then steps to that phase, which is how the letter shows where the
-         * capcode went. Clearing an entry leaves it where it was.
-         */
-        uint8_t order[4];
-        const uint8_t phases = flex_tx_mode_phases(&app->tx_config, order);
-        const uint8_t phase = number ? flex_tx_capcode_slot((uint32_t)number) :
-                                       order[app->tx_ric_slot];
-        app->tx_config.ric[phase] = number;
-        for(uint8_t i = 0; i < phases; i++) {
-            if(order[i] == phase) app->tx_ric_slot = i;
-        }
-    }
-    view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventTxRicInputDone);
-}
-
 // Which phase the open entry is editing.
 static uint8_t pocsag_pager_tx_ric_phase(POCSAGPagerApp* app) {
     uint8_t order[4];
@@ -35,11 +7,38 @@ static uint8_t pocsag_pager_tx_ric_phase(POCSAGPagerApp* app) {
     return order[app->tx_ric_slot < phases ? app->tx_ric_slot : 0U];
 }
 
+static void pocsag_pager_scene_tx_ric_input_callback(void* context, int32_t number) {
+    POCSAGPagerApp* app = context;
+    if(app->tx_config.protocol != PagerTxProtocolFlex) {
+        app->tx_config.ric[0] = number;
+    } else {
+        if(number != 0 && !flex_tx_capcode_valid((uint32_t)number)) {
+            view_dispatcher_send_custom_event(
+                app->view_dispatcher, PCSGCustomEventTxRicInputInvalid);
+            return;
+        }
+        // The capcode goes on the phase that was selected. Which phase a
+        // subscriber listens on is provisioning, not arithmetic on the
+        // address - see the Capcode row in pocsag_pager_scene_tx_config.c.
+        app->tx_config.ric[pocsag_pager_tx_ric_phase(app)] = number;
+    }
+    view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventTxRicInputDone);
+}
+
 void pocsag_pager_scene_tx_ric_input_on_enter(void* context) {
     POCSAGPagerApp* app = context;
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    number_input_set_header_text(
-        app->number_input, flex ? "FLEX capcode (0 clears)" : "Destination RIC");
+    // Naming the phase says where the capcode is going, since the entry fills
+    // the slot that was selected rather than one derived from the number.
+    char header[28];
+    if(flex) {
+        snprintf(
+            header,
+            sizeof(header),
+            "Phase %c capcode (0 clears)",
+            'A' + pocsag_pager_tx_ric_phase(app));
+    }
+    number_input_set_header_text(app->number_input, flex ? header : "Destination RIC");
     number_input_set_result_callback(
         app->number_input,
         pocsag_pager_scene_tx_ric_input_callback,

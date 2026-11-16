@@ -79,7 +79,12 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   2101249-1075843072. Other long-address sets are not supported. Zero clears a
   phase; addresses in the gap between the two ranges are rejected. Each phase
   can carry a short or long capcode independently, and the full capcodes are
-  retained when switching between the RX and TX apps. Four-level modes are offered only
+  retained when switching between the RX and TX apps. Left and right on the
+  Capcode row choose the phase the entry fills, because which phase a
+  subscriber listens on is provisioning rather than arithmetic on the address:
+  the standard embedding rule holds only for CAPCODE types that say so, and
+  the type letter is never transmitted. Read the phase off the receiver and
+  set it here to match. Four-level modes are offered only
   when the firmware exports `furi_hal_subghz_write_reg`; the symbol is resolved
   at runtime so the same app can still load on older firmware. These modes
   use the internal CC1101, with a thread driving GPIO and frequency-offset

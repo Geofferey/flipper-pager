@@ -38,9 +38,6 @@ bool flex_tx_four_level_supported(void);
 /** Phases this configuration's mode carries, in the order they go out. */
 uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]);
 
-/** The phase a capcode belongs to, which is encoded in its own address. */
-uint8_t flex_tx_capcode_slot(uint32_t capcode);
-
 /** Supported destination address; zero disables a phase and is not an address. */
 bool flex_tx_capcode_valid(uint32_t capcode);
 

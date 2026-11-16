@@ -142,17 +142,6 @@ static FlexTxMode flex_tx_mode(const PocsagTxConfig* config) {
     return (FlexTxMode){0x870CU, 1250U, 1U, 1U, 32U, {0}, 1U};
 }
 
-/*
- * A capcode names its own phase. From the standard frame and phase embedding
- * rule - TI's TMS320FLEX manual section 2.6.2, "bits 2 and 3 in order, specify
- * phases 00, 01, 10, or 11 for phase 0,1,2,3 (a,b,c,d)", or equivalently
- * Phase = (Integer(Addr/4)) Modulo 4. A single-phase pager listens only on the
- * phase its address maps to, so a page put anywhere else never reaches it.
- */
-static uint8_t flex_tx_capcode_phase(uint32_t capcode) {
-    return (uint8_t)((capcode >> 2) & 3U);
-}
-
 static bool flex_tx_capcode_is_long(uint32_t capcode) {
     return capcode > FLEX_TX_SHORT_CAPCODE_MAX;
 }
@@ -168,10 +157,6 @@ uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]) {
     const FlexTxMode mode = flex_tx_mode(config);
     for(uint8_t i = 0; i < mode.phases; i++) order[i] = mode.order[i];
     return mode.phases;
-}
-
-uint8_t flex_tx_capcode_slot(uint32_t capcode) {
-    return flex_tx_capcode_phase(capcode);
 }
 
 static uint16_t flex_tx_frame_bytes(const FlexTxMode* mode) {

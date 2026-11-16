@@ -122,11 +122,21 @@ static void pocsag_pager_scene_tx_clamp_address(POCSAGPagerApp* app) {
 
 /*
  * FLEX gets one capcode per phase and left and right step between them, the
- * row reading "416297/A". The letter is a readout, not a setting: a capcode
- * carries its phase in its own address bits, so entering one files it under
- * the phase it belongs to - putting it anywhere else would address a pager
- * that is not listening there. An empty phase shows as "-/B" and sends
- * nothing. Only the phases the current mode carries can be stepped to, so
+ * row reading "416297/A". The letter is the setting: pick the phase, then
+ * enter the capcode that goes out on it.
+ *
+ * It cannot be derived from the capcode. The standard embedding rule, TI
+ * SPRA193 section 2.9.2, does give Phase = (Integer(Addr/4)) Modulo 4, but
+ * which rule a subscriber was provisioned under is carried by the CAPCODE
+ * type letter, which never goes on the air (section 2.9.3). Types A-D apply
+ * that rule after subtracting 0-3, and types U-X assign phases 0-3 outright
+ * with no rule at all - the form the spec recommends wherever group
+ * addresses are in use. Observed traffic agrees: capcodes turn up on phases
+ * the rule does not predict. So the phase is a property of the subscriber,
+ * not of the number, and the operator has to say which one.
+ *
+ * An empty phase shows as "-/B" and sends nothing. Only the phases the
+ * current mode carries can be stepped to, so
  * 1600/2 offers A alone and 6400/4 all four.
  *
  * POCSAG has no phases, so it keeps the single RIC it always had.
