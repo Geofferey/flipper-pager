@@ -172,6 +172,15 @@ static const PCSGSetting pcsg_settings[] = {
     // Without this, 6400/4FSK saved as flex_3200 + flex_4level and came back
     // as 3200/4FSK, which is a different phase pair as well as a different rate.
     {"TxFlex6400", 0, PCSG_FIELD(tx_config.flex_6400), PCSGSetBool},
+    {"TxExtSec", PCSG_TX_EXT_SEC_MAX, PCSG_FIELD(tx_config.ext_sec), PCSGSetU32},
+    {"TxSsid1", 0, PCSG_FIELD(tx_config.send_ssid1), PCSGSetBool},
+    {"TxLocalId", PCSG_TX_LOCAL_ID_MAX, PCSG_FIELD(tx_config.local_id), PCSGSetU32},
+    {"TxCovZone", PCSG_TX_COVERAGE_MAX, PCSG_FIELD(tx_config.coverage_zone), PCSGSetU32},
+    {"TxSsid2", 0, PCSG_FIELD(tx_config.send_ssid2), PCSGSetBool},
+    {"TxCountry", PCSG_TX_COUNTRY_MAX, PCSG_FIELD(tx_config.country_code), PCSGSetU32},
+    {"TxRoaming", 0, PCSG_FIELD(tx_config.roaming), PCSGSetBool},
+    {"TxMsgNumber", PCSG_TX_MSG_NUMBER_AUTO, PCSG_FIELD(tx_config.msg_number), PCSGSetU32},
+    {"TxErsCycles", PCSG_TX_ERS_CYCLES_MAX, PCSG_FIELD(tx_config.ers_cycles), PCSGSetU32},
 };
 
 static uint32_t pcsg_setting_get(const POCSAGPagerApp* app, const PCSGSetting* setting) {

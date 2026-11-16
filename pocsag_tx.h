@@ -32,6 +32,31 @@ extern const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT];
 /** Zone codes are five bits, so 31 is the largest the zone word can carry. */
 #define PCSG_TX_UTC_CODE_MAX 31U
 
+/*
+ * System information BIWs, which say where the transmission is rather than
+ * when. SSID1 carries the local identity and coverage zone, SSID2 the country
+ * code; both sit in the same three slots as the clock words, so enabling them
+ * puts them in competition with it. Ranges are the widths of their fields.
+ */
+#define PCSG_TX_LOCAL_ID_MAX 511U
+#define PCSG_TX_COVERAGE_MAX 31U
+#define PCSG_TX_COUNTRY_MAX  1023U
+
+/** Accurate-seconds trim in the zone word, in steps of 0.9375 s. */
+#define PCSG_TX_EXT_SEC_MAX 7U
+
+/** Message number, six bits. One past the top means follow the clock instead. */
+#define PCSG_TX_MSG_NUMBER_MAX  63U
+#define PCSG_TX_MSG_NUMBER_AUTO 64U
+
+/*
+ * Acquisition runway ahead of a page, in 12-byte cycles. Each is 60 ms at
+ * 1600 baud, so the default is 1.44 s. Zero sends none at all.
+ */
+#define PCSG_TX_ERS_CYCLES_MAX     48U
+#define PCSG_TX_ERS_CYCLES_DEFAULT 24U
+#define PCSG_TX_ERS_CYCLES_STEP    4U
+
 /** Body of a Sequence page; the counter is four digits, so it wraps at 9999. */
 #define PCSG_TX_SEQUENCE_FORMAT "THIS IS A TEST PERIODIC PAGE SEQUENTIAL NUMBER %04u"
 #define PCSG_TX_SEQUENCE_MAX    9999U
@@ -109,6 +134,22 @@ typedef struct {
     bool dst;
     /** FLEX only: whether capcodes name their own phase or are assigned one. */
     uint8_t phase_mode;
+    /** FLEX only: accurate-seconds trim carried by the zone word. */
+    uint8_t ext_sec;
+    /** FLEX only: send the SSID1 word, naming the local identity and zone. */
+    bool send_ssid1;
+    /** Nine bits and five bits, the widths of their fields in that word. */
+    uint16_t local_id;
+    uint8_t coverage_zone;
+    /** FLEX only: send the SSID2 word, naming the country. Ten bits. */
+    bool send_ssid2;
+    uint16_t country_code;
+    /** FLEX only: roaming flag in the frame information word. */
+    bool roaming;
+    /** FLEX only: message number, or PCSG_TX_MSG_NUMBER_AUTO to derive it. */
+    uint8_t msg_number;
+    /** FLEX only: acquisition cycles ahead of a page. */
+    uint8_t ers_cycles;
     /** Which body to send. Not saved. */
     PagerTxMessageMode message_mode;
     /** Sequence mode: the number this page carries. Not saved. */

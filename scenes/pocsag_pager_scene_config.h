@@ -3,6 +3,7 @@
 // automatically, so a scene left out of a build costs it nothing.
 #ifdef PCSG_TX_APP
 ADD_SCENE(pocsag_pager, tx_config, TxConfig)
+ADD_SCENE(pocsag_pager, tx_params, TxParams)
 ADD_SCENE(pocsag_pager, tx_ric_input, TxRicInput)
 ADD_SCENE(pocsag_pager, tx_message_input, TxMessageInput)
 ADD_SCENE(pocsag_pager, tx_confirm, TxConfirm)

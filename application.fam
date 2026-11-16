@@ -16,6 +16,7 @@ PCSG_RX_ONLY = [
     "!flex_tx.c",
     "!pocsag_tx.c",
     "!pocsag_pager_scene_tx_config.c",
+    "!pocsag_pager_scene_tx_params.c",
     "!pocsag_pager_scene_tx_confirm.c",
     "!pocsag_pager_scene_tx_ric_input.c",
     "!pocsag_pager_scene_tx_message_input.c",

@@ -34,6 +34,9 @@ typedef enum {
     /** Tuning frequency in Hz, checked against the radio before it is kept. */
     PCSGNumberFieldTxFrequency,
     PCSGNumberFieldRxFrequency,
+    /** SSID words: too many values to step through, so they are typed. */
+    PCSGNumberFieldTxLocalId,
+    PCSGNumberFieldTxCountry,
 } PCSGNumberField;
 
 /*

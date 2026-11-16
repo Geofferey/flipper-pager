@@ -299,6 +299,15 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->tx_config.dst = true;
     app->tx_config.message_mode = PagerTxMessageTyped;
     app->tx_config.sequence_number = 1;
+    app->tx_config.ext_sec = 0;
+    app->tx_config.send_ssid1 = false;
+    app->tx_config.local_id = 0;
+    app->tx_config.coverage_zone = 0;
+    app->tx_config.send_ssid2 = false;
+    app->tx_config.country_code = 0;
+    app->tx_config.roaming = false;
+    app->tx_config.msg_number = PCSG_TX_MSG_NUMBER_AUTO;
+    app->tx_config.ers_cycles = PCSG_TX_ERS_CYCLES_DEFAULT;
     app->filter.frequency_correction_hz = 0;
     pcsg_settings_load(app);
 

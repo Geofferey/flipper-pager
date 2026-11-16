@@ -91,6 +91,26 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   the spec recommends wherever group addresses are in use. Read the phase off
   the receiver and match it. Switching to `CAP` re-files the capcodes already
   entered, and where two of them name the same phase the first is kept.
+  **FLEX params** opens the system-level knobs, which need changing only to
+  imitate a particular network. `ExtSec` is the accurate-seconds trim in the
+  zone word, 0-7 in steps of 0.9375 s, left at 0 because the frame grid is
+  already clock-synchronized. `SSID1` sends the system identification word
+  naming `Local ID` (0-511) and `Cov zone` (0-31); `SSID2` sends the one naming
+  `Country` (0-1023). `Roaming` sets the frame information word's roaming flag
+  and switches both SSID words on, since the flag means nothing without an
+  identified system. `Msg #` is the message number carried in the alphanumeric
+  header: `Auto` derives it from the clock as before, and a fixed 0-63 is sent
+  as set and counted on once the page has gone out. `ERS` is the acquisition
+  runway ahead of a page, 0 to 48 cycles of 60 ms each, default 24 (1.44 s);
+  `Off` sends none, which suits a receiver already locked to the channel.
+
+  BIW1 carries the address offset in two bits, so at most **three** block
+  information words fit ahead of the address. With three or fewer enabled they
+  all go out, in the order SSID1, Time, Date, Zone, SSID2. Past that the time
+  is pinned, so a receiver meeting a single frame can still set its clock, and
+  the rest take turns by frame number rather than the tail of the list never
+  being sent at all.
+
   Four-level modes are offered only
   when the firmware exports `furi_hal_subghz_write_reg`; the symbol is resolved
   at runtime so the same app can still load on older firmware. These modes
@@ -302,6 +322,22 @@ retrieval-flag change between original and repeated pages. The radio deviation
 and bitstream polarity use the same Mayhem
 [`proc_fsk` implementation](https://github.com/portapack-mayhem/mayhem-firmware/blob/next/firmware/baseband/proc_fsk.cpp)
 already referenced by the POCSAG transmitter.
+
+The system information words, the roaming flag and the remaining frame
+parameters were ported from that same Mayhem `flex_tx` app, whose
+`FlexParamsView` is the model for this app's **FLEX params** screen. Its
+`flex_biw_ssid1` (word format `000`, coverage zone at bit 7 and local ID at
+bit 12) and `flex_biw_ssid2` (format `111`, country code at bit 11) supply the
+two SSID layouts; its `flex_fiw` supplies the roaming flag at bit 15; its
+`flex_biw_sysinfo` call supplies the accurate-seconds position, bits 18-20 of
+the same word that already carried this app's zone and daylight flag; and its
+`on_roaming_changed` is why enabling roaming enables both SSID words. The
+three-slot ceiling and the word order `SSID1, Time, Date, Zone, SSID2` are
+Mayhem's `build_frame`, so a frame with three or fewer of them is word for
+word what Mayhem sends. Rotating the remainder by frame number when more are
+enabled, and pinning the time while doing so, is this app's own, as is the
+message number's advance after a page rather than Mayhem's advance after a
+transmission. No source code was copied.
 
 Long address set 1-2 encoding follows the conversion and address assignments
 in TI's [SPRA193](https://www.ti.com/lit/pdf/spra193), sections 2.9.4-2.9.6,

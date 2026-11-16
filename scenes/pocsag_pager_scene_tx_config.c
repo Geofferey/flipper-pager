@@ -12,6 +12,7 @@ typedef enum {
     PCSGTxConfigClock,
     PCSGTxConfigUtc,
     PCSGTxConfigDst,
+    PCSGTxConfigParams,
     PCSGTxConfigMessage,
     PCSGTxConfigReview,
 } PCSGTxConfigIndex;
@@ -305,6 +306,17 @@ static void pocsag_pager_scene_tx_set_dst(VariableItem* item) {
     pocsag_pager_scene_tx_show_dst(app);
 }
 
+// The system words, the roaming flag and the rest live in their own scene, so
+// this row is a door rather than a setting. FLEX only, like everything behind it.
+static void pocsag_pager_scene_tx_show_params(POCSAGPagerApp* app) {
+    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
+    VariableItem* item =
+        pocsag_pager_scene_tx_row(app, PCSGTxConfigParams, 1U, flex ? NULL : "N/A");
+    if(!item) return;
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, ">");
+}
+
 static void pocsag_pager_scene_tx_set_clock(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
@@ -419,6 +431,7 @@ static void pocsag_pager_scene_tx_set_protocol(VariableItem* item) {
     pocsag_pager_scene_tx_show_clock(app);
     pocsag_pager_scene_tx_show_utc(app);
     pocsag_pager_scene_tx_show_dst(app);
+    pocsag_pager_scene_tx_show_params(app);
 }
 
 static void pocsag_pager_scene_tx_set_function(VariableItem* item) {
@@ -567,6 +580,9 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
         app);
     pocsag_pager_scene_tx_show_dst(app);
 
+    variable_item_list_add(app->variable_item_list, "FLEX params:", 1, NULL, app);
+    pocsag_pager_scene_tx_show_params(app);
+
     variable_item_list_add(
         app->variable_item_list, "Message:", 1, pocsag_pager_scene_tx_set_message, app);
     pocsag_pager_scene_tx_show_message(app);
@@ -609,6 +625,12 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
         scene_manager_set_scene_state(
             app->scene_manager, POCSAGPagerSceneCapcodeInput, PCSGNumberFieldFreqCorrection);
         scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneCapcodeInput);
+        return true;
+    }
+    if(event.event == PCSGTxConfigParams) {
+        if(app->tx_config.protocol == PagerTxProtocolFlex) {
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxParams);
+        }
         return true;
     }
     if(event.event == PCSGTxConfigMessage) {

@@ -24,6 +24,17 @@ static void pocsag_pager_scene_tx_sequence_advance(POCSAGPagerApp* app) {
     }
 }
 
+/*
+ * A set message number counts on once the page carrying it has gone out, so
+ * the next send is a new message rather than a repeat of the last one. Auto
+ * takes its number from the clock each time and has nothing to advance.
+ */
+static void pocsag_pager_scene_tx_message_advance(POCSAGPagerApp* app) {
+    if(app->tx_config.protocol != PagerTxProtocolFlex) return;
+    if(app->tx_config.msg_number > PCSG_TX_MSG_NUMBER_MAX) return;
+    app->tx_config.msg_number = (app->tx_config.msg_number + 1U) & PCSG_TX_MSG_NUMBER_MAX;
+}
+
 static void pocsag_pager_scene_tx_confirm_callback(
     GuiButtonType result,
     InputType type,
@@ -213,11 +224,15 @@ bool pocsag_pager_scene_tx_confirm_on_event(void* context, SceneManagerEvent eve
          */
         if(pager_tx_mode_is_beacon(app->tx_config.message_mode)) {
             // A beacon burst longer than one frame is the periodic page, so
-            // the number moves on only once a page has actually gone out.
-            if(app->tx_burst_frames > 1U) pocsag_pager_scene_tx_sequence_advance(app);
+            // the numbers move on only once a page has actually gone out.
+            if(app->tx_burst_frames > 1U) {
+                pocsag_pager_scene_tx_sequence_advance(app);
+                pocsag_pager_scene_tx_message_advance(app);
+            }
             app->tx_pause_pending = true;
             return true;
         }
+        pocsag_pager_scene_tx_message_advance(app);
         /*
          * Sequence counts up once per page sent, not once per press, so a send
          * that failed or was cancelled does not skip a number. The screen shows

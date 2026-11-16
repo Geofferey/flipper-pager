@@ -54,11 +54,34 @@ static uint32_t* pocsag_pager_scene_capcode_input_field(POCSAGPagerApp* app) {
     }
 }
 
+#ifdef PCSG_TX_APP
+/*
+ * The SSID fields are nine and ten bits wide, so they are stored narrower than
+ * the uint32_t everything else here is edited through. They get their own
+ * accessor rather than widening the config to suit this scene.
+ */
+static uint16_t* pocsag_pager_scene_capcode_input_narrow(POCSAGPagerApp* app, uint32_t field) {
+    if(field == PCSGNumberFieldTxLocalId) return &app->tx_config.local_id;
+    if(field == PCSGNumberFieldTxCountry) return &app->tx_config.country_code;
+    return NULL;
+}
+#endif
+
 static void pocsag_pager_scene_capcode_input_callback(void* context, int32_t number) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
     const uint32_t field =
         scene_manager_get_scene_state(app->scene_manager, POCSAGPagerSceneCapcodeInput);
+
+#ifdef PCSG_TX_APP
+    uint16_t* narrow = pocsag_pager_scene_capcode_input_narrow(app, field);
+    if(narrow) {
+        *narrow = (uint16_t)number;
+        view_dispatcher_send_custom_event(
+            app->view_dispatcher, PCSGCustomEventSceneCapcodeInputDone);
+        return;
+    }
+#endif
 
     if(pocsag_pager_scene_capcode_input_is_frequency(field) &&
        !subghz_devices_is_frequency_valid(app->txrx->radio_device, (uint32_t)number)) {
@@ -96,6 +119,14 @@ void pocsag_pager_scene_capcode_input_on_enter(void* context) {
     int32_t max = PCSG_CAPCODE_MAX;
     switch(field) {
 #ifdef PCSG_TX_APP
+    case PCSGNumberFieldTxLocalId:
+        header = "Local ID (0-511)";
+        max = PCSG_TX_LOCAL_ID_MAX;
+        break;
+    case PCSGNumberFieldTxCountry:
+        header = "Country code (0-1023)";
+        max = PCSG_TX_COUNTRY_MAX;
+        break;
     case PCSGNumberFieldTxFrequency:
     default:
         header = "TX frequency, Hz";
@@ -138,14 +169,15 @@ void pocsag_pager_scene_capcode_input_on_enter(void* context) {
 #endif
     }
 
+    int32_t value = (int32_t)*pocsag_pager_scene_capcode_input_field(app);
+#ifdef PCSG_TX_APP
+    const uint16_t* narrow = pocsag_pager_scene_capcode_input_narrow(app, field);
+    if(narrow) value = (int32_t)*narrow;
+#endif
+
     number_input_set_header_text(app->number_input, header);
     number_input_set_result_callback(
-        app->number_input,
-        pocsag_pager_scene_capcode_input_callback,
-        app,
-        (int32_t)*pocsag_pager_scene_capcode_input_field(app),
-        min,
-        max);
+        app->number_input, pocsag_pager_scene_capcode_input_callback, app, value, min, max);
     view_dispatcher_switch_to_view(app->view_dispatcher, POCSAGPagerViewNumberInput);
 }
 

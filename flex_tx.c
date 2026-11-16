@@ -48,16 +48,16 @@ bool flex_tx_four_level_supported(void) {
  * and needs almost none of this; one coming cold to a single transmission has
  * to recover the bit clock from scratch, and since the page is now sent once
  * there is no second burst to fall back on. Still shorter overall than the
- * two bursts and two frames this replaced. Lower it if the airtime matters
- * more than the margin.
+ * two bursts and two frames this replaced. The ERS row sets it, so what is
+ * sized here is the longest it can be asked for.
  */
-#define FLEX_TX_ERS_CYCLES     24U
+#define FLEX_TX_ERS_CYCLE_BYTES 12U
 // The frame proper, 3000 bits at 1600 baud = exactly 1.875 s. The flush tail
 // is sent once after the last frame, not per frame, so consecutive frames stay
 // on the network's frame grid.
-#define FLEX_TX_FRAME_BYTES    375U
-#define FLEX_TX_SYNC1_BYTES    14U
-#define FLEX_TX_ERS_BYTES      (FLEX_TX_ERS_CYCLES * 12U)
+#define FLEX_TX_FRAME_BYTES     375U
+#define FLEX_TX_SYNC1_BYTES     14U
+#define FLEX_TX_ERS_BYTES       (PCSG_TX_ERS_CYCLES_MAX * FLEX_TX_ERS_CYCLE_BYTES)
 /*
  * The test beacon's preamble, taken off the air from the FLEX network at
  * 929.4625 MHz: a 37.5 Hz square wave at full deviation, far below the 800 Hz
@@ -274,9 +274,11 @@ static uint32_t flex_tx_checksum(uint32_t data21) {
     return (data21 & ~0x0FU) | ((0x0FU - (sum & 0x0FU)) & 0x0FU);
 }
 
-static uint32_t flex_tx_fiw(uint8_t cycle, uint8_t frame) {
+// Bit 15 is the roaming flag, which marks the frame as carried by a system a
+// subscriber is visiting rather than its home one.
+static uint32_t flex_tx_fiw(uint8_t cycle, uint8_t frame, bool roaming) {
     uint32_t word = ((uint32_t)(cycle & 0x0FU) << 4) |
-                    ((uint32_t)(frame & 0x7FU) << 8);
+                    ((uint32_t)(frame & 0x7FU) << 8) | ((uint32_t)roaming << 15);
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
@@ -322,10 +324,31 @@ static uint32_t flex_tx_biw_date(uint8_t year_field, uint8_t month, uint8_t day)
  * what moves. That is also why the zone table has no code for daylight in
  * Newfoundland or Adelaide: it never needs one.
  */
-static uint32_t flex_tx_biw_zone(uint8_t utc_code, bool dst) {
+static uint32_t flex_tx_biw_zone(uint8_t utc_code, bool dst, uint8_t ext_sec) {
     uint32_t word = (5U << 4) | (5U << 7) | ((uint32_t)(utc_code & 31U) << 11);
     // L is word bit 16: set is standard time, clear is daylight.
     if(!dst) word |= 1UL << 16;
+    // S2 to S0, bits 18-20: the seconds trim, zero when the frame grid is
+    // already clock-synchronised, which it is unless a network says otherwise.
+    word |= ((uint32_t)(ext_sec & 7U)) << 18;
+    return flex_tx_encode_word(flex_tx_checksum(word));
+}
+
+/*
+ * System identification, which says where the transmission comes from rather
+ * than when. SSID1 is word format 000, carrying the coverage zone and the
+ * local identity; SSID2 is 111, carrying the country code and a traffic
+ * management flag this never sets. Field positions follow Mayhem's
+ * flex_biw_ssid1() and flex_biw_ssid2(), cited in README.md.
+ */
+static uint32_t flex_tx_biw_ssid1(uint16_t local_id, uint8_t coverage_zone) {
+    const uint32_t word = ((uint32_t)(coverage_zone & 31U) << 7) |
+                          ((uint32_t)(local_id & 0x1FFU) << 12);
+    return flex_tx_encode_word(flex_tx_checksum(word));
+}
+
+static uint32_t flex_tx_biw_ssid2(uint16_t country_code) {
+    const uint32_t word = (7U << 4) | ((uint32_t)(country_code & 0x3FFU) << 11);
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
@@ -586,6 +609,102 @@ static void flex_tx_clock_advance(FlexTxFrameSpec* spec) {
     spec->hour = (spec->hour + 1U) % 24U;
 }
 
+/*
+ * The block information words that precede the address, in Mayhem's order:
+ * BIW1 carries the address offset in two bits, so word 4 is as far out as the
+ * address can start and only three of these fit. Three or fewer enabled is
+ * therefore word for word what Mayhem's build_frame() sends.
+ */
+typedef enum {
+    FlexTxBiwSsid1,
+    FlexTxBiwTime,
+    FlexTxBiwDate,
+    FlexTxBiwZone,
+    FlexTxBiwSsid2,
+    FlexTxBiwCount,
+} FlexTxBiwKind;
+
+#define FLEX_TX_BIW_SLOTS 3U
+
+/*
+ * Which of them this frame carries. Past three the time is pinned, because a
+ * receiver meeting a single frame still has to be able to set its clock, and
+ * the rest take turns by frame number so that none is starved - a network
+ * spreads its system words over the cycle the same way. The order above is
+ * kept whatever the frame, so only the choice rotates, not the layout.
+ */
+static void flex_tx_biw_select(
+    const PocsagTxConfig* config,
+    uint8_t frame,
+    bool chosen[FlexTxBiwCount]) {
+    bool enabled[FlexTxBiwCount];
+    enabled[FlexTxBiwSsid1] = config->send_ssid1;
+    enabled[FlexTxBiwTime] = (config->clock_biws & PCSG_TX_CLOCK_TIME) != 0U;
+    enabled[FlexTxBiwDate] = (config->clock_biws & PCSG_TX_CLOCK_DATE) != 0U;
+    // The zone says which offset the hour is in, so it goes where the time does.
+    enabled[FlexTxBiwZone] = enabled[FlexTxBiwTime];
+    enabled[FlexTxBiwSsid2] = config->send_ssid2;
+
+    uint8_t count = 0U;
+    for(uint8_t i = 0; i < FlexTxBiwCount; i++) {
+        chosen[i] = false;
+        if(enabled[i]) count++;
+    }
+    if(count <= FLEX_TX_BIW_SLOTS) {
+        memcpy(chosen, enabled, sizeof(enabled));
+        return;
+    }
+
+    uint8_t slots = FLEX_TX_BIW_SLOTS;
+    if(enabled[FlexTxBiwTime]) {
+        chosen[FlexTxBiwTime] = true;
+        enabled[FlexTxBiwTime] = false;
+        slots--;
+    }
+    uint8_t pool[FlexTxBiwCount];
+    uint8_t pool_count = 0U;
+    for(uint8_t i = 0; i < FlexTxBiwCount; i++) {
+        if(enabled[i]) pool[pool_count++] = i;
+    }
+    // More contenders than slots is what got us here, so the walk always has
+    // somewhere to go and cannot pick the same word twice.
+    for(uint8_t i = 0; i < slots; i++) {
+        chosen[pool[(frame + i) % pool_count]] = true;
+    }
+}
+
+static uint8_t flex_tx_biw_words(
+    const PocsagTxConfig* config,
+    const FlexTxFrameSpec* spec,
+    uint32_t words[FLEX_TX_BIW_SLOTS]) {
+    bool chosen[FlexTxBiwCount];
+    flex_tx_biw_select(config, spec->frame, chosen);
+
+    uint8_t count = 0U;
+    for(uint8_t i = 0; i < FlexTxBiwCount && count < FLEX_TX_BIW_SLOTS; i++) {
+        if(!chosen[i]) continue;
+        switch(i) {
+        case FlexTxBiwSsid1:
+            words[count++] = flex_tx_biw_ssid1(config->local_id, config->coverage_zone);
+            break;
+        case FlexTxBiwTime:
+            words[count++] = flex_tx_biw_time(spec->hour, (uint8_t)(spec->cycle * 4U));
+            break;
+        case FlexTxBiwDate:
+            words[count++] = flex_tx_biw_date(spec->year_field, spec->month, spec->day);
+            break;
+        case FlexTxBiwZone:
+            words[count++] =
+                flex_tx_biw_zone(config->utc_code, config->dst, config->ext_sec);
+            break;
+        default:
+            words[count++] = flex_tx_biw_ssid2(config->country_code);
+            break;
+        }
+    }
+    return count;
+}
+
 static bool flex_tx_write_frame(
     uint8_t** output,
     FlexTxEncoder* encoder,
@@ -611,7 +730,7 @@ static bool flex_tx_write_frame(
     sync1_out[11] = (uint8_t)mode.marker;
     sync1_out[4] = (uint8_t)~sync1_out[10];
     sync1_out[5] = (uint8_t)~sync1_out[11];
-    flex_tx_write_word(output, flex_tx_fiw(spec->cycle, spec->frame));
+    flex_tx_write_word(output, flex_tx_fiw(spec->cycle, spec->frame, config->roaming));
     for(uint8_t pass = 0; pass < mode.sync2_copies; pass++) {
         for(size_t i = 0; i < COUNT_OF(sync2); i++) *(*output)++ = sync2[i];
     }
@@ -643,28 +762,15 @@ static bool flex_tx_write_frame(
     // Every carried phase with a capcode set gets the page addressed to it;
     // the rest carry sync and the clock and address nobody.
     /*
-     * The clock words come first and BIW1 points the address past however many
-     * of them there are. Mayhem's slot order is time, date, zone. An idle frame
-     * starts the address field where the vector field starts, which is an empty
-     * one: sync and the clock, carrying no pages at all.
+     * The block information words come first and BIW1 points the address past
+     * however many of them there are. An idle frame starts the address field
+     * where the vector field starts, which is an empty one: sync and the
+     * clock, carrying no pages at all.
      */
-    const bool send_time = (config->clock_biws & PCSG_TX_CLOCK_TIME) != 0U;
-    const bool send_date = (config->clock_biws & PCSG_TX_CLOCK_DATE) != 0U;
-    uint32_t clock_words[3];
-    uint8_t clock_count = 0U;
-    if(send_time) {
-        clock_words[clock_count++] =
-            flex_tx_biw_time(spec->hour, (uint8_t)(spec->cycle * 4U));
-    }
-    if(send_date) {
-        clock_words[clock_count++] =
-            flex_tx_biw_date(spec->year_field, spec->month, spec->day);
-    }
-    if(send_time) {
-        clock_words[clock_count++] = flex_tx_biw_zone(config->utc_code, config->dst);
-    }
+    uint32_t biw_words[FLEX_TX_BIW_SLOTS];
+    const uint8_t biw_count = flex_tx_biw_words(config, spec, biw_words);
 
-    const uint8_t address_start = (uint8_t)(1U + clock_count);
+    const uint8_t address_start = (uint8_t)(1U + biw_count);
     for(uint8_t p = 0; p < mode.phases; p++) {
         const uint8_t index = mode.order[p];
         const uint32_t capcode = config->ric[index];
@@ -677,8 +783,8 @@ static bool flex_tx_write_frame(
         const uint8_t vector_start = carries ? (uint8_t)(address_start + words) : address_start;
         const uint8_t message_start = (uint8_t)(vector_start + words);
         phase_words[index][0] = flex_tx_biw1(address_start, vector_start);
-        for(uint8_t i = 0; i < clock_count; i++) {
-            phase_words[index][1U + i] = clock_words[i];
+        for(uint8_t i = 0; i < biw_count; i++) {
+            phase_words[index][1U + i] = biw_words[i];
         }
         if(!carries) continue;
         if(long_address) {
@@ -742,11 +848,16 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         if(!any) return false;
     }
 
-    DateTime datetime;
-    furi_hal_rtc_get_datetime(&datetime);
-    uint8_t message_number =
-        (datetime.second + datetime.minute * 7U + datetime.hour) & 0x3FU;
-    if(message_number == 0U) message_number = 1U;
+    // Auto keeps what the app did before the row existed: a number off the
+    // clock, so two transmissions a moment apart do not look like one message
+    // repeated. A set number is sent as it stands and the app counts it on.
+    uint8_t message_number = config->msg_number;
+    if(message_number > PCSG_TX_MSG_NUMBER_MAX) {
+        DateTime datetime;
+        furi_hal_rtc_get_datetime(&datetime);
+        message_number = (datetime.second + datetime.minute * 7U + datetime.hour) & 0x3FU;
+        if(message_number == 0U) message_number = 1U;
+    }
 
     // The cycle and frame are the clock, so they come from it rather than the
     // capcode: a frame number that disagreed with the clock words would be a
@@ -755,7 +866,11 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         .message_number = message_number,
         .signature = flex_tx_signature(config->message, message_length),
     };
-    const size_t lead_bytes = beacon ? FLEX_TX_TEST_PREAMBLE_BYTES : FLEX_TX_ERS_BYTES;
+    const uint8_t ers_cycles = config->ers_cycles > PCSG_TX_ERS_CYCLES_MAX ?
+                                   PCSG_TX_ERS_CYCLES_DEFAULT :
+                                   config->ers_cycles;
+    const size_t lead_bytes =
+        beacon ? FLEX_TX_TEST_PREAMBLE_BYTES : (size_t)ers_cycles * FLEX_TX_ERS_CYCLE_BYTES;
     DateTime on_air;
     flex_tx_clock(
         &spec.cycle, &spec.frame, &spec.hour, &on_air, FLEX_TX_PRE_FIW_MS(lead_bytes));
@@ -800,7 +915,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     if(beacon) {
         flex_tx_write_preamble(&output, FLEX_TX_TEST_PREAMBLE_BITS);
     } else {
-        flex_tx_write_ers(&output, FLEX_TX_ERS_CYCLES);
+        flex_tx_write_ers(&output, ers_cycles);
     }
     encoder->frame_base = lead_bytes;
     for(uint8_t i = 0; i < frames; i++) {
