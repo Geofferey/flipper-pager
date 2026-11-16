@@ -9,6 +9,9 @@
  * layouts and ranges follow it; see README.md.
  */
 typedef enum {
+    PCSGTxParamsClock,
+    PCSGTxParamsUtc,
+    PCSGTxParamsDst,
     PCSGTxParamsExtSec,
     PCSGTxParamsSsid1,
     PCSGTxParamsLocalId,
@@ -20,7 +23,11 @@ typedef enum {
     PCSGTxParamsErs,
 } PCSGTxParamsIndex;
 
+// Also serves DST, where Off is standard time, the bit set, and On daylight.
 static const char* const tx_params_off_on[] = {"Off", "On"};
+
+// Indexed by the stored bit mask, so the order follows PCSG_TX_CLOCK_*.
+const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT] = {"Off", "Time", "Date", "Time+Date"};
 
 #define PCSG_TX_PARAMS_ERS_COUNT (PCSG_TX_ERS_CYCLES_MAX / PCSG_TX_ERS_CYCLES_STEP + 1U)
 
@@ -28,6 +35,86 @@ static void pocsag_pager_scene_tx_params_show_toggle(VariableItem* item, bool va
     const uint8_t index = value ? 1U : 0U;
     variable_item_set_current_value_index(item, index);
     variable_item_set_current_value_text(item, tx_params_off_on[index]);
+}
+
+/*
+ * The zone, the daylight flag and the seconds trim are all fields of the one
+ * zone word, and that word rides with the time, so with the time BIW off they
+ * have nothing to say and their rows collapse to a single value.
+ */
+static VariableItem*
+    pocsag_pager_scene_tx_params_zone_row(POCSAGPagerApp* app, uint8_t index, uint8_t count) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, index);
+    if(!item) return NULL;
+    if(app->tx_config.clock_biws & PCSG_TX_CLOCK_TIME) {
+        variable_item_set_values_count(item, count);
+        return item;
+    }
+    variable_item_set_values_count(item, 1U);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, "No zone");
+    return NULL;
+}
+
+static void pocsag_pager_scene_tx_params_show_clock(POCSAGPagerApp* app) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxParamsClock);
+    if(!item) return;
+    if(app->tx_config.clock_biws > PCSG_TX_CLOCK_BOTH) {
+        app->tx_config.clock_biws = PCSG_TX_CLOCK_BOTH;
+    }
+    variable_item_set_current_value_index(item, app->tx_config.clock_biws);
+    variable_item_set_current_value_text(item, pcsg_tx_clock_text[app->tx_config.clock_biws]);
+}
+
+static void pocsag_pager_scene_tx_params_show_utc(POCSAGPagerApp* app) {
+    VariableItem* item =
+        pocsag_pager_scene_tx_params_zone_row(app, PCSGTxParamsUtc, PCSG_ZONE_COUNT);
+    if(!item) return;
+    char text[12];
+    const uint8_t code = app->tx_config.utc_code;
+    pcsg_zone_format(pcsg_zone_minutes(code), text, sizeof(text));
+    variable_item_set_current_value_index(item, pcsg_zone_index(code));
+    variable_item_set_current_value_text(item, text);
+}
+
+static void pocsag_pager_scene_tx_params_show_dst(POCSAGPagerApp* app) {
+    VariableItem* item = pocsag_pager_scene_tx_params_zone_row(
+        app, PCSGTxParamsDst, COUNT_OF(tx_params_off_on));
+    if(!item) return;
+    pocsag_pager_scene_tx_params_show_toggle(item, app->tx_config.dst);
+}
+
+static void pocsag_pager_scene_tx_params_show_ext_sec(POCSAGPagerApp* app) {
+    VariableItem* item = pocsag_pager_scene_tx_params_zone_row(
+        app, PCSGTxParamsExtSec, PCSG_TX_EXT_SEC_MAX + 1U);
+    if(!item) return;
+    if(app->tx_config.ext_sec > PCSG_TX_EXT_SEC_MAX) app->tx_config.ext_sec = 0U;
+    variable_item_set_current_value_index(item, app->tx_config.ext_sec);
+    char text[8];
+    snprintf(text, sizeof(text), "%u", app->tx_config.ext_sec);
+    variable_item_set_current_value_text(item, text);
+}
+
+static void pocsag_pager_scene_tx_params_set_utc(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    app->tx_config.utc_code = pcsg_zone_code(variable_item_get_current_value_index(item));
+    pocsag_pager_scene_tx_params_show_utc(app);
+}
+
+static void pocsag_pager_scene_tx_params_set_dst(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    app->tx_config.dst = variable_item_get_current_value_index(item) != 0U;
+    pocsag_pager_scene_tx_params_show_dst(app);
+}
+
+// Turning the time off takes the zone word with it, so its three rows follow.
+static void pocsag_pager_scene_tx_params_set_clock(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    app->tx_config.clock_biws = variable_item_get_current_value_index(item);
+    pocsag_pager_scene_tx_params_show_clock(app);
+    pocsag_pager_scene_tx_params_show_utc(app);
+    pocsag_pager_scene_tx_params_show_dst(app);
+    pocsag_pager_scene_tx_params_show_ext_sec(app);
 }
 
 /*
@@ -81,9 +168,7 @@ static void
 static void pocsag_pager_scene_tx_params_set_ext_sec(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
     app->tx_config.ext_sec = variable_item_get_current_value_index(item);
-    char text[8];
-    snprintf(text, sizeof(text), "%u", app->tx_config.ext_sec);
-    variable_item_set_current_value_text(item, text);
+    pocsag_pager_scene_tx_params_show_ext_sec(app);
 }
 
 static void pocsag_pager_scene_tx_params_set_ssid1(VariableItem* item) {
@@ -146,15 +231,37 @@ void pocsag_pager_scene_tx_params_on_enter(void* context) {
     POCSAGPagerApp* app = context;
     VariableItem* item;
 
-    item = variable_item_list_add(
+    variable_item_list_add(
+        app->variable_item_list,
+        "Clock:",
+        PCSG_TX_CLOCK_COUNT,
+        pocsag_pager_scene_tx_params_set_clock,
+        app);
+    pocsag_pager_scene_tx_params_show_clock(app);
+
+    variable_item_list_add(
+        app->variable_item_list,
+        "UTC:",
+        PCSG_ZONE_COUNT,
+        pocsag_pager_scene_tx_params_set_utc,
+        app);
+    pocsag_pager_scene_tx_params_show_utc(app);
+
+    variable_item_list_add(
+        app->variable_item_list,
+        "DST:",
+        COUNT_OF(tx_params_off_on),
+        pocsag_pager_scene_tx_params_set_dst,
+        app);
+    pocsag_pager_scene_tx_params_show_dst(app);
+
+    variable_item_list_add(
         app->variable_item_list,
         "ExtSec:",
         PCSG_TX_EXT_SEC_MAX + 1U,
         pocsag_pager_scene_tx_params_set_ext_sec,
         app);
-    if(app->tx_config.ext_sec > PCSG_TX_EXT_SEC_MAX) app->tx_config.ext_sec = 0U;
-    variable_item_set_current_value_index(item, app->tx_config.ext_sec);
-    pocsag_pager_scene_tx_params_show_number(app, PCSGTxParamsExtSec, app->tx_config.ext_sec);
+    pocsag_pager_scene_tx_params_show_ext_sec(app);
 
     item = variable_item_list_add(
         app->variable_item_list,

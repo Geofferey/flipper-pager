@@ -91,10 +91,16 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   the spec recommends wherever group addresses are in use. Read the phase off
   the receiver and match it. Switching to `CAP` re-files the capcodes already
   entered, and where two of them name the same phase the first is kept.
-  **FLEX params** opens the system-level knobs, which need changing only to
-  imitate a particular network. `ExtSec` is the accurate-seconds trim in the
-  zone word, 0-7 in steps of 0.9375 s, left at 0 because the frame grid is
-  already clock-synchronized. `SSID1` sends the system identification word
+  **FLEX params** holds everything that describes the transmission rather than
+  the page. `Clock` picks which clock BIWs go out: `Off`, `Time`, `Date` or
+  `Time+Date`. `UTC` and `DST` are the zone and the standard/daylight flag, and
+  `ExtSec` the accurate-seconds trim, 0-7 in steps of 0.9375 s, left at 0
+  because the frame grid is already clock-synchronized. Those three are fields
+  of the one zone word, which rides with the time, so all three read `No zone`
+  and send nothing when `Clock` is `Off` or `Date`.
+
+  The rest need changing only to imitate a particular network. `SSID1` sends
+  the system identification word
   naming `Local ID` (0-511) and `Cov zone` (0-31); `SSID2` sends the one naming
   `Country` (0-1023). `Roaming` sets the frame information word's roaming flag
   and switches both SSID words on, since the flag means nothing without an

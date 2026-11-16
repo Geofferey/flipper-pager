@@ -9,9 +9,6 @@ typedef enum {
     PCSGTxConfigBaud,
     PCSGTxConfigPolarity,
     PCSGTxConfigCorrection,
-    PCSGTxConfigClock,
-    PCSGTxConfigUtc,
-    PCSGTxConfigDst,
     PCSGTxConfigParams,
     PCSGTxConfigMessage,
     PCSGTxConfigReview,
@@ -39,12 +36,6 @@ static uint8_t pocsag_pager_scene_tx_flex_mode_index(const PocsagTxConfig* confi
     if(config->flex_4level) return 2U;
     return config->flex_3200 ? 1U : 0U;
 }
-// Indexed by the stored bit mask, so the order follows PCSG_TX_CLOCK_*.
-const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT] = {"Off", "Time", "Date", "Time+Date"};
-
-// Off is standard time, which is the bit set; On is daylight, the bit clear.
-static const char* const tx_dst_text[] = {"Off", "On"};
-
 // Indexed by PagerTxPhaseMode.
 static const char* const tx_phase_text[PagerTxPhaseCount] = {"CAP", "Group"};
 
@@ -250,64 +241,8 @@ static void pocsag_pager_scene_tx_set_phases(VariableItem* item) {
     pocsag_pager_scene_tx_show_address(app);
 }
 
-// The zone word rides with the time, so the UTC and DST rows go when it does.
-static const char* pocsag_pager_scene_tx_zone_off(POCSAGPagerApp* app) {
-    if(app->tx_config.protocol != PagerTxProtocolFlex) return "N/A";
-    return (app->tx_config.clock_biws & PCSG_TX_CLOCK_TIME) ? NULL : "No zone";
-}
-
-// Only FLEX carries BIWs, so POCSAG has nothing to choose here.
-static void pocsag_pager_scene_tx_show_clock(POCSAGPagerApp* app) {
-    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    VariableItem* item = pocsag_pager_scene_tx_row(
-        app, PCSGTxConfigClock, PCSG_TX_CLOCK_COUNT, flex ? NULL : "N/A");
-    if(!item) return;
-    if(app->tx_config.clock_biws > PCSG_TX_CLOCK_BOTH) {
-        app->tx_config.clock_biws = PCSG_TX_CLOCK_BOTH;
-    }
-    variable_item_set_current_value_index(item, app->tx_config.clock_biws);
-    variable_item_set_current_value_text(item, pcsg_tx_clock_text[app->tx_config.clock_biws]);
-}
-
-static void pocsag_pager_scene_tx_show_utc(POCSAGPagerApp* app) {
-    VariableItem* item = pocsag_pager_scene_tx_row(
-        app, PCSGTxConfigUtc, PCSG_ZONE_COUNT, pocsag_pager_scene_tx_zone_off(app));
-    if(!item) return;
-    char text[12];
-    const uint8_t code = app->tx_config.utc_code;
-    pcsg_zone_format(pcsg_zone_minutes(code), text, sizeof(text));
-    variable_item_set_current_value_index(item, pcsg_zone_index(code));
-    variable_item_set_current_value_text(item, text);
-}
-
-static void pocsag_pager_scene_tx_show_dst(POCSAGPagerApp* app) {
-    VariableItem* item = pocsag_pager_scene_tx_row(
-        app, PCSGTxConfigDst, COUNT_OF(tx_dst_text), pocsag_pager_scene_tx_zone_off(app));
-    if(!item) return;
-    const uint8_t index = app->tx_config.dst ? 1U : 0U;
-    variable_item_set_current_value_index(item, index);
-    variable_item_set_current_value_text(item, tx_dst_text[index]);
-}
-
-/*
- * The setters store the choice and re-render through the show_ function above,
- * as the Message row already did, rather than repeating how the row is drawn.
- * Changing the clock takes the zone with it, so its two rows follow.
- */
-static void pocsag_pager_scene_tx_set_utc(VariableItem* item) {
-    POCSAGPagerApp* app = variable_item_get_context(item);
-    app->tx_config.utc_code = pcsg_zone_code(variable_item_get_current_value_index(item));
-    pocsag_pager_scene_tx_show_utc(app);
-}
-
-static void pocsag_pager_scene_tx_set_dst(VariableItem* item) {
-    POCSAGPagerApp* app = variable_item_get_context(item);
-    app->tx_config.dst = variable_item_get_current_value_index(item) != 0U;
-    pocsag_pager_scene_tx_show_dst(app);
-}
-
-// The system words, the roaming flag and the rest live in their own scene, so
-// this row is a door rather than a setting. FLEX only, like everything behind it.
+// The clock words and everything else FLEX-only live in their own scene, so
+// this row is a door rather than a setting.
 static void pocsag_pager_scene_tx_show_params(POCSAGPagerApp* app) {
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
     VariableItem* item =
@@ -315,16 +250,6 @@ static void pocsag_pager_scene_tx_show_params(POCSAGPagerApp* app) {
     if(!item) return;
     variable_item_set_current_value_index(item, 0);
     variable_item_set_current_value_text(item, ">");
-}
-
-static void pocsag_pager_scene_tx_set_clock(VariableItem* item) {
-    POCSAGPagerApp* app = variable_item_get_context(item);
-    if(app->tx_config.protocol == PagerTxProtocolFlex) {
-        app->tx_config.clock_biws = variable_item_get_current_value_index(item);
-    }
-    pocsag_pager_scene_tx_show_clock(app);
-    pocsag_pager_scene_tx_show_utc(app);
-    pocsag_pager_scene_tx_show_dst(app);
 }
 
 /*
@@ -425,12 +350,9 @@ static void pocsag_pager_scene_tx_set_protocol(VariableItem* item) {
     variable_item_set_current_value_text(item, tx_protocol_text[app->tx_config.protocol]);
     pocsag_pager_scene_tx_clamp_address(app);
     pocsag_pager_scene_tx_show_protocol_options(app);
-    // The beacon modes and the clock BIWs are FLEX only, so leaving FLEX has
+    // The beacon modes and the FLEX params are FLEX only, so leaving FLEX has
     // to drop them.
     pocsag_pager_scene_tx_show_message(app);
-    pocsag_pager_scene_tx_show_clock(app);
-    pocsag_pager_scene_tx_show_utc(app);
-    pocsag_pager_scene_tx_show_dst(app);
     pocsag_pager_scene_tx_show_params(app);
 }
 
@@ -555,30 +477,6 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, correction_index);
     // Show what is stored, not the index: a typed value need not be on the grid.
     pocsag_pager_scene_tx_show_correction(item, app->filter.frequency_correction_hz);
-
-    variable_item_list_add(
-        app->variable_item_list,
-        "Clock:",
-        PCSG_TX_CLOCK_COUNT,
-        pocsag_pager_scene_tx_set_clock,
-        app);
-    pocsag_pager_scene_tx_show_clock(app);
-
-    variable_item_list_add(
-        app->variable_item_list,
-        "UTC:",
-        PCSG_ZONE_COUNT,
-        pocsag_pager_scene_tx_set_utc,
-        app);
-    pocsag_pager_scene_tx_show_utc(app);
-
-    variable_item_list_add(
-        app->variable_item_list,
-        "DST:",
-        COUNT_OF(tx_dst_text),
-        pocsag_pager_scene_tx_set_dst,
-        app);
-    pocsag_pager_scene_tx_show_dst(app);
 
     variable_item_list_add(app->variable_item_list, "FLEX params:", 1, NULL, app);
     pocsag_pager_scene_tx_show_params(app);
