@@ -354,11 +354,21 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
         canvas_draw_str_aligned(canvas, 64, 26, AlignCenter, AlignCenter, "No messages");
         canvas_set_font(canvas, FontSecondary);
     } else if(model->history_item == 0) {
-        canvas_draw_icon(canvas, 0, 0, model->ext_module ? &I_Fishing_123x52 : &I_Scanning_123x52);
+        /*
+         * One pager for either radio: the Int/Ext label below already says
+         * which, and the artwork fills the width, so there is no room for a
+         * second composition and nothing for it to say.
+         */
+        canvas_draw_icon(canvas, 0, 0, &I_PagerScan_123x52);
+        /*
+         * Both strings sit inside the drawn pager's screen, which is left
+         * empty for them, so they read as being on its display rather than
+         * printed over a picture of one. Its interior is x6..116, y6..34.
+         */
         canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str(canvas, 63, 46, "Scanning...");
+        canvas_draw_str_aligned(canvas, 61, 24, AlignCenter, AlignCenter, "Scanning...");
         canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str(canvas, 44, 10, model->ext_module ? "Ext" : "Int");
+        canvas_draw_str(canvas, 10, 14, model->ext_module ? "Ext" : "Int");
     }
 
     // Draw RSSI
