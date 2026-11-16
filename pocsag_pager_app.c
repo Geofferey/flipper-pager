@@ -329,6 +329,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->filter.hud_show_ssid2 = true;
     app->filter.hud_show_roaming = true;
     app->filter.hud_show_frame = true;
+    app->filter.hud_show_msg_count = true;
     app->filter.hud_show_ext_sec = true;
     pcsg_settings_load(app);
 

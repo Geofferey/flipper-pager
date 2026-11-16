@@ -271,6 +271,8 @@ typedef struct {
     bool hud_show_ssid2;
     bool hud_show_roaming;
     bool hud_show_frame;
+    /** Messages held this session, the same count the status bar shows. */
+    bool hud_show_msg_count;
     bool hud_show_ext_sec;
 } PCSGFilterSettings;
 

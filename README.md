@@ -225,8 +225,10 @@ FLEX decoding features:
 are with left. It shows what the network has said about itself, with its clock
 as the centre piece: the zone and the offset in force, the date, the local ID
 and coverage zone from the SSID1 word, the country code from SSID2, the
-roaming flag from the frame information word, the frame and cycle, and the
-accurate-seconds trim. A field reads `-` until a word carrying it arrives, so
+roaming flag from the frame information word, the frame and cycle, the count of
+messages held this session, and the accurate-seconds trim. The message count is
+the same one the status bar carries, so the two always agree - including that it
+falls as well as rises, the history being a rolling window. A field reads `-` until a word carrying it arrives, so
 a network that never sends one is told apart from one that sends it as zero.
 The saved-log list has no network behind it, so right does nothing there.
 

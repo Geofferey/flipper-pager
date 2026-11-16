@@ -24,6 +24,7 @@ typedef enum {
     PCSGHudConfigSsid2,
     PCSGHudConfigRoaming,
     PCSGHudConfigFrame,
+    PCSGHudConfigMsgCount,
     PCSGHudConfigExtSec,
 } PCSGHudConfigIndex;
 
@@ -100,6 +101,11 @@ static const PCSGHudRow pcsg_hud_rows[] = {
          hud_show_text},
     [PCSGHudConfigFrame] =
         {"Frame:", PCSG_HUD_FIELD(filter.hud_show_frame), COUNT_OF(hud_show_text), hud_show_text},
+    [PCSGHudConfigMsgCount] =
+        {"Msg count:",
+         PCSG_HUD_FIELD(filter.hud_show_msg_count),
+         COUNT_OF(hud_show_text),
+         hud_show_text},
     [PCSGHudConfigExtSec] =
         {"ExtSec:",
          PCSG_HUD_FIELD(filter.hud_show_ext_sec),

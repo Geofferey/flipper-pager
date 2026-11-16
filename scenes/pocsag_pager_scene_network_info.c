@@ -189,6 +189,17 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
             app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW2_Y, AlignLeft, FontSecondary, text);
     }
 
+    /*
+     * Messages held this session, between the frame and the trim. The same
+     * count the status bar carries, so the two always agree - which means it
+     * falls as well as rises, the history being a rolling window.
+     */
+    if(app->filter.hud_show_msg_count) {
+        snprintf(text, sizeof(text), "Msg %u", pcsg_history_get_item(app->txrx->history));
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_MID_X, PCSG_NETWORK_ROW2_Y, AlignCenter, FontSecondary, text);
+    }
+
     if(app->filter.hud_show_ext_sec) {
         if(info.have_ext_sec) {
             snprintf(text, sizeof(text), "ExtSec %u", info.ext_sec);
