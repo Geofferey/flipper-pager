@@ -7,13 +7,32 @@
 /** Highest FLEX capcode accepted by the capcode filter (NumberInput is int32). */
 #define PCSG_CAPCODE_MAX 2147483647U
 
-/** Off / Exact / Range filter, used for capcodes and FLEX frames. */
+/*
+ * Off / Exact / Range filter, used for capcodes, RICs and FLEX frames.
+ *
+ * The two alert modes hide nothing. They say which addresses are worth an
+ * alert while every other message still arrives and is still listed, which is
+ * the usual want: knowing when one address is paged without going deaf to the
+ * rest. What an alert then is remains the Alert rows' to say, so Alert: Off is
+ * silent whatever is set here.
+ */
 typedef enum {
     PCSGCapcodeFilterOff,
     PCSGCapcodeFilterExact,
     PCSGCapcodeFilterRange,
+    PCSGCapcodeFilterAlert,
+    PCSGCapcodeFilterAlertRange,
     PCSGCapcodeFilterCount,
 } PCSGCapcodeFilter;
+
+/** Frames are not addresses and have nothing to alert on, so their row stops
+ *  where the alert modes start. */
+#define PCSG_FRAME_FILTER_COUNT PCSGCapcodeFilterAlert
+
+/** Whether a mode narrows what alerts rather than what is shown. */
+static inline bool pcsg_filter_is_alert(PCSGCapcodeFilter mode) {
+    return mode == PCSGCapcodeFilterAlert || mode == PCSGCapcodeFilterAlertRange;
+}
 
 /** Highest POCSAG RIC (21-bit address). */
 #define PCSG_RIC_MAX 2097151U
@@ -303,5 +322,15 @@ void pcsg_settings_save(POCSAGPagerApp* app);
 
 /** Whether a decoded message passes the filters and should enter history. */
 bool pcsg_filter_accepts(
+    const PCSGFilterSettings* filter,
+    SubGhzProtocolDecoderBase* decoder_base);
+
+/*
+ * Whether a message that got through those filters is one to alert on. True
+ * unless its address filter is in an alert mode and the address is outside
+ * what that mode names, so the alert modes are the only thing that narrows
+ * this. Says nothing about what an alert is: the Alert rows own that.
+ */
+bool pcsg_filter_alerts(
     const PCSGFilterSettings* filter,
     SubGhzProtocolDecoderBase* decoder_base);

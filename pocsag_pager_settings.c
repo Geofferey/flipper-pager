@@ -26,9 +26,51 @@ static bool pcsg_filter_in_range(
         return value == first;
     case PCSGCapcodeFilterRange:
         return value >= MIN(first, second) && value <= MAX(first, second);
+    case PCSGCapcodeFilterAlert:
+    case PCSGCapcodeFilterAlertRange:
+        // These narrow what alerts, not what is shown: nothing is held back.
+        return true;
     default:
         return true;
     }
+}
+
+// The same comparison the filter modes make, for the alert modes instead. A
+// mode that is not one of them narrows nothing, so everything alerts.
+static bool pcsg_filter_alert_match(
+    PCSGCapcodeFilter mode,
+    uint32_t first,
+    uint32_t second,
+    uint32_t value) {
+    switch(mode) {
+    case PCSGCapcodeFilterAlert:
+        return value == first;
+    case PCSGCapcodeFilterAlertRange:
+        return value >= MIN(first, second) && value <= MAX(first, second);
+    default:
+        return true;
+    }
+}
+
+bool pcsg_filter_alerts(
+    const PCSGFilterSettings* filter,
+    SubGhzProtocolDecoderBase* decoder_base) {
+    furi_assert(filter);
+    furi_assert(decoder_base);
+
+    if(decoder_base->protocol == &subghz_protocol_pocsag) {
+        return pcsg_filter_alert_match(
+            filter->ric_filter,
+            filter->ric_min,
+            filter->ric_max,
+            subghz_protocol_decoder_pocsag_get_ric(decoder_base));
+    }
+    if(decoder_base->protocol != &subghz_protocol_flex) return true;
+
+    FlexPageInfo page;
+    subghz_protocol_decoder_flex_get_page_info(decoder_base, &page);
+    return pcsg_filter_alert_match(
+        filter->capcode_filter, filter->capcode_min, filter->capcode_max, page.capcode);
 }
 
 bool pcsg_filter_accepts(

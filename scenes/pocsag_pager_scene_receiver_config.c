@@ -130,6 +130,8 @@ const char* const capcode_filter_text[PCSGCapcodeFilterCount] = {
     "Off",
     "Exact",
     "Range",
+    "Alert",
+    "AlertRng",
 };
 
 /*
@@ -218,10 +220,15 @@ static void pocsag_pager_scene_receiver_config_set_capcode_text(VariableItem* it
     variable_item_set_current_value_text(item, text_buf);
 }
 
+// Both range modes use the maximum, the alert one included; the rest do not.
+static bool pcsg_config_filter_uses_max(PCSGCapcodeFilter mode) {
+    return mode == PCSGCapcodeFilterRange || mode == PCSGCapcodeFilterAlertRange;
+}
+
 static void pocsag_pager_scene_receiver_config_update_capcode_max(POCSAGPagerApp* app) {
     VariableItem* item = pcsg_config_row(app, PCSGSettingIndexCapcodeMax);
     if(!item) return;
-    if(app->filter.capcode_filter == PCSGCapcodeFilterRange) {
+    if(pcsg_config_filter_uses_max(app->filter.capcode_filter)) {
         pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.capcode_max);
     } else {
         variable_item_set_current_value_text(item, "--");
@@ -231,7 +238,7 @@ static void pocsag_pager_scene_receiver_config_update_capcode_max(POCSAGPagerApp
 static void pocsag_pager_scene_receiver_config_update_ric_max(POCSAGPagerApp* app) {
     VariableItem* item = pcsg_config_row(app, PCSGSettingIndexRicMax);
     if(!item) return;
-    if(app->filter.ric_filter == PCSGCapcodeFilterRange) {
+    if(pcsg_config_filter_uses_max(app->filter.ric_filter)) {
         pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.ric_max);
     } else {
         variable_item_set_current_value_text(item, "--");
@@ -403,9 +410,10 @@ static const PCSGConfigRow pcsg_config_rows[] = {
     [PCSGSettingIndexFlexPhase] =
         {"FLEX Phase:", phase_filter_text, PCSG_ROW(filter.phase_filter), 0,
          PCSGPhaseFilterCount, PCSGRowEnum, PCSGSideNone},
+    // Stops before the alert modes: a frame is not an address to alert on.
     [PCSGSettingIndexFrameFilter] =
         {"Frame Filter:", capcode_filter_text, PCSG_ROW(filter.frame_filter), 0,
-         PCSGCapcodeFilterCount, PCSGRowEnum, PCSGSideFrameMax},
+         PCSG_FRAME_FILTER_COUNT, PCSGRowEnum, PCSGSideFrameMax},
     // Debug: record the raw FLEX4 sample stream to SD for offline analysis.
     [PCSGSettingIndexRawCapture] =
         {"Raw Capture:", raw_capture_text, PCSG_ROW(filter.raw_capture), 0, RAW_CAPTURE_COUNT,
@@ -517,7 +525,7 @@ static void
             app->view_dispatcher, PCSGCustomEventSceneSettingCapcodeMin);
     } else if(
         index == PCSGSettingIndexCapcodeMax &&
-        app->filter.capcode_filter == PCSGCapcodeFilterRange) {
+        pcsg_config_filter_uses_max(app->filter.capcode_filter)) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, PCSGCustomEventSceneSettingCapcodeMax);
     } else if(index == PCSGSettingIndexFreqCorr) {
@@ -526,7 +534,8 @@ static void
     } else if(index == PCSGSettingIndexRicMin) {
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingRicMin);
     } else if(
-        index == PCSGSettingIndexRicMax && app->filter.ric_filter == PCSGCapcodeFilterRange) {
+        index == PCSGSettingIndexRicMax &&
+        pcsg_config_filter_uses_max(app->filter.ric_filter)) {
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingRicMax);
     } else if(index == PCSGSettingIndexFrameMin) {
         view_dispatcher_send_custom_event(

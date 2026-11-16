@@ -666,7 +666,7 @@ void pcsg_view_receiver_show_address_filter(
             snprintf(
                 model->filter_hint,
                 sizeof(model->filter_hint),
-                "%s %lu filter",
+                "%s %lu alert",
                 cap ? "CAP" : "RIC",
                 (unsigned long)address);
             model->bar_show = PCSGReceiverBarShowAddressFilter;

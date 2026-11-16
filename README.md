@@ -185,6 +185,18 @@ Receiver settings and the transmitter protocol, frequency, address, function,
 baud, polarity, correction and message text are saved on a clean app exit.
 The message is stored in plain text in that file, like the rest of it.
 
+**Cap. Filter** and **RIC Filter** offer `Off`, `Exact`, `Range`, `Alert` and
+`AlertRng`. The first three decide what is shown. The two alert modes hide
+nothing: every message still arrives and is still listed, and only the
+addresses they name raise an alert - which is usually the want, knowing when
+one address is paged without going deaf to the rest. What an alert is remains
+the `Alert` and `Alert Tone` rows' to say, so `Alert: Off` is silent whatever
+is set here. `Frame Filter` has no alert modes: a frame is not an address.
+
+Holding OK on a message in the list sets its address to `Alert`. It used to set
+`Exact`, which hid every other address - rarely what is wanted from a list of
+what is on the air.
+
 Reception and error correction:
 
 - POCSAG applies BCH(31,21) plus even-parity validation to every codeword,

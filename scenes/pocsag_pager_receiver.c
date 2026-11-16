@@ -179,9 +179,17 @@ static void pocsag_pager_scene_receiver_add_to_history_callback(
             notification_message(
                 app->notifications, pcsg_led_blink_sequence(app->filter.decode_led_color));
         }
-        if(!pcsg_classic_alert_request(app)) {
-            const NotificationSequence* alert = pocsag_pager_scene_receiver_alert(app);
-            if(alert) notification_message(app->notifications, alert);
+        /*
+         * An address filter in one of its alert modes narrows what alerts
+         * without narrowing what arrives, so this is asked separately from
+         * the filters above. The decode LED is not gated by it: that reports
+         * decoding, not whether the message was one being waited for.
+         */
+        if(pcsg_filter_alerts(&app->filter, decoder_base)) {
+            if(!pcsg_classic_alert_request(app)) {
+                const NotificationSequence* alert = pocsag_pager_scene_receiver_alert(app);
+                if(alert) notification_message(app->notifications, alert);
+            }
         }
         app->txrx->rx_key_state = PCSGRxKeyStateAddKey;
     }
@@ -295,15 +303,21 @@ bool pocsag_pager_scene_receiver_on_event(void* context, SceneManagerEvent event
             const uint16_t index = pcsg_view_receiver_get_idx_menu(app->pcsg_receiver);
             PCSGHistoryAddressType type;
             uint32_t address;
+            /*
+             * Alert rather than Exact: holding an address used to hide every
+             * other one, which is rarely what is wanted from a list of what
+             * is on the air. This asks to be told when that address is paged
+             * and leaves the rest arriving as before.
+             */
             if(pcsg_history_get_address(app->txrx->history, index, &type, &address)) {
                 if(type == PCSGHistoryAddressFlexCap && address <= PCSG_CAPCODE_MAX) {
-                    app->filter.capcode_filter = PCSGCapcodeFilterExact;
+                    app->filter.capcode_filter = PCSGCapcodeFilterAlert;
                     app->filter.capcode_min = address;
                     app->filter.capcode_max = address;
                     pcsg_view_receiver_show_address_filter(app->pcsg_receiver, true, address);
                     pcsg_settings_save(app);
                 } else if(type == PCSGHistoryAddressPocsagRic && address <= PCSG_RIC_MAX) {
-                    app->filter.ric_filter = PCSGCapcodeFilterExact;
+                    app->filter.ric_filter = PCSGCapcodeFilterAlert;
                     app->filter.ric_min = address;
                     app->filter.ric_max = address;
                     pcsg_view_receiver_show_address_filter(app->pcsg_receiver, false, address);

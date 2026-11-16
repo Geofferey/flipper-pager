@@ -111,7 +111,9 @@ void pocsag_pager_scene_capcode_input_on_enter(void* context) {
     const PCSGCapcodeFilter mode = frame ? app->filter.frame_filter :
                                    ric   ? app->filter.ric_filter :
                                            app->filter.capcode_filter;
-    const bool range = mode == PCSGCapcodeFilterRange;
+    // Both range modes take two values, so both label their entries min/max.
+    const bool range =
+        mode == PCSGCapcodeFilterRange || mode == PCSGCapcodeFilterAlertRange;
 #endif
 
     const char* header;
