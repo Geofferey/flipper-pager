@@ -83,7 +83,13 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
     // The centre piece. Big numbers carry digits and the colon, nothing else,
     // so the no-clock case has to be said in the smaller font.
     if(have_clock) {
-        snprintf(text, sizeof(text), "%02u:%02u:%02u", now.hour, now.minute, now.second);
+        // Minutes and seconds come from the frame grid, so they run from the
+        // first frame onwards; the hour stays "--" until a clock word arrives.
+        if(now.have_hour) {
+            snprintf(text, sizeof(text), "%02u:%02u:%02u", now.hour, now.minute, now.second);
+        } else {
+            snprintf(text, sizeof(text), "--:%02u:%02u", now.minute, now.second);
+        }
         pocsag_pager_scene_network_info_add(
             app, PCSG_NETWORK_MID_X, PCSG_NETWORK_CLOCK_Y, AlignCenter, FontBigNumbers, text);
     } else {

@@ -322,12 +322,28 @@ void subghz_protocol_decoder_flex_reset_frame_timing(void* context) {
 }
 
 static void flex_publish_timing(SubGhzProtocolDecoderFlex* instance) {
+    /*
+     * A frame whose information word was recovered by Weak Decode carries
+     * cycle and frame numbers that came from a guess, so it contributes
+     * nothing and the last trusted frame stays in place: the clock keeps
+     * running from that one instead of jumping to this one.
+     *
+     * It used to wipe the whole clock instead, which threw away hour and zone
+     * words that had arrived cleanly on earlier frames and had nothing to do
+     * with this one. A reading already taken is not made wrong by a later
+     * frame being hard to read.
+     */
+    if(instance->frame_chase) return;
+
     instance->timing_sequence++;
     const uint32_t now = furi_get_tick();
     uint8_t clock = instance->timing_clock;
-    if(!instance->timing_valid || instance->frame_chase ||
-       now - instance->timing_tick >= furi_ms_to_ticks(3600000U)) {
+    if(!instance->timing_valid) {
         clock = 0;
+    } else if(now - instance->timing_tick >= furi_ms_to_ticks(3600000U)) {
+        // An hour with no trusted frame is too long a gap to carry an hour
+        // across, but the zone the network named still stands.
+        clock &= (uint8_t)~(FLEX_CLOCK_HOUR_MASK | FLEX_CLOCK_HAVE_HOUR);
     } else if((clock & FLEX_CLOCK_HAVE_HOUR) && instance->cycle < instance->timing_cycle) {
         clock = (clock & ~FLEX_CLOCK_HOUR_MASK) | ((clock + 1U) & FLEX_CLOCK_HOUR_MASK) % 24U;
     }
@@ -1370,7 +1386,9 @@ static void flex_decode_clock(
     const bool* valid,
     const bool* chased,
     uint8_t address_offset) {
-    if(!instance->timing_valid || instance->timing_chase || chased[0]) return;
+    // frame_chase is this frame's own flag; timing_chase now only ever reports
+    // the last trusted frame, which says nothing about the words in this one.
+    if(!instance->timing_valid || instance->frame_chase || chased[0]) return;
     uint8_t clock = instance->timing_clock;
     uint8_t zone = instance->timing_zone;
 
@@ -2110,6 +2128,7 @@ bool subghz_protocol_decoder_flex_get_frame_timing(void* context, FlexFrameTimin
         timing->chase = instance->timing_chase;
         const uint8_t clock = instance->timing_clock;
         timing->hour = clock & FLEX_CLOCK_HOUR_MASK;
+        timing->have_hour = (clock & FLEX_CLOCK_HAVE_HOUR) != 0;
         timing->clock_valid =
             (clock & (FLEX_CLOCK_HAVE_HOUR | FLEX_CLOCK_HAVE_ZONE)) ==
             (FLEX_CLOCK_HAVE_HOUR | FLEX_CLOCK_HAVE_ZONE);

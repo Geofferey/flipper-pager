@@ -146,6 +146,9 @@ typedef struct {
     uint8_t hour;
     uint8_t minute;
     uint8_t second;
+    /** Minutes and seconds come from the frame grid and are always known once
+     *  a frame is; the hour needs a clock word and may not have arrived. */
+    bool have_hour;
     int16_t zone_minutes;
     bool have_zone;
 } PCSGNetworkTime;

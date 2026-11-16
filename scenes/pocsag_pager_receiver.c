@@ -104,18 +104,25 @@ static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
             at = strlen(text);
             at += snprintf(text + at, sizeof(text) - at, " ");
         }
-        snprintf(text + at, sizeof(text) - at, "%02u:%02u:%02u", now.hour, now.minute, now.second);
+        // The hour alone waits on a clock word; minutes and seconds do not.
+        if(now.have_hour) {
+            at += snprintf(text + at, sizeof(text) - at, "%02u", now.hour);
+        } else {
+            at += snprintf(text + at, sizeof(text) - at, "--");
+        }
+        snprintf(text + at, sizeof(text) - at, ":%02u:%02u", now.minute, now.second);
         app->rx_clock_tick = furi_get_tick();
         pcsg_view_receiver_set_clock(app->pcsg_receiver, text, show);
         return;
     }
 
     /*
-     * One frame recovered by Weak Decode clears the decoder's whole clock, and
-     * the next clock word can be a frame-0 away - minutes on a network that
-     * sends them sparsely. Dropping the reading for that long every time a
-     * page arrives is worse than holding the last one, so it stays up until
-     * the hold expires. NULL leaves the text alone and only moves the phase.
+     * The reading itself no longer goes away on its own: a frame recovered by
+     * Weak Decode is ignored rather than allowed to clear the clock, and the
+     * clock runs on from the last trusted frame however long ago that was.
+     * What is left here is the case with no reading at all behind it - RX
+     * stopped, or not on FLEX - where the last one stays up until the hold
+     * expires. NULL leaves the text alone and only moves the phase.
      */
     const bool expired = furi_get_tick() - app->rx_clock_tick >
                          furi_ms_to_ticks(PCSG_RX_CLOCK_HOLD_MS);

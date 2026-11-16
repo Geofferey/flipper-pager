@@ -93,6 +93,10 @@ typedef struct {
     uint32_t sequence;
     bool chase;
     uint8_t hour;
+    /** An hour word has arrived. Minutes and seconds never need one: they come
+     *  from where the frame sits in the cycle, so they are known from the
+     *  first frame information word onwards. */
+    bool have_hour;
     bool clock_valid; // both the hour and standard/daylight flag have arrived
     bool standard_time;
     /** Zone code from the system message word, or FLEX_ZONE_NONE until one

@@ -230,6 +230,16 @@ accurate-seconds trim. A field reads `-` until a word carrying it arrives, so
 a network that never sends one is told apart from one that sends it as zero.
 The saved-log list has no network behind it, so right does nothing there.
 
+A reading stays once taken. The clock keeps running from the last trusted
+frame, and the zone, date and system words hold until the network replaces
+them, rather than being dropped when nothing new arrives. A frame recovered by
+Weak Decode is ignored for timing instead of clearing what earlier clean frames
+established. Minutes and seconds come from where the frame sits in the cycle,
+so they run from the first frame onwards; only the hour needs a clock word, and
+it reads `--:MM:SS` until one arrives. Setting the RTC still requires a frame
+from the last five seconds - a stale reading is fine to show and not to sync
+from.
+
 The date is shown as the network sends it, with no attempt to resolve an era
 the format does not carry. The date is its own word and says nothing about the
 time of day: a commercial channel was observed carrying an accurate time of day

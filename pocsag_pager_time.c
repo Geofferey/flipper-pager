@@ -30,15 +30,25 @@ static uint32_t
     return (gps_second + 3600U - PCSG_GPS_UTC_OFFSET_S) % 3600U;
 }
 
-// Common gate: FLEX reception with frame timing recent enough to extrapolate.
-static bool pcsg_time_frame(POCSAGPagerApp* app, FlexFrameTiming* timing, uint32_t* age_ms) {
+/*
+ * Common gate: FLEX reception with frame timing to extrapolate from. The clock
+ * is free running once seeded - the frame gives the position, the Flipper's own
+ * tick carries it forward - so how old the last frame may be depends on what
+ * the answer is for. Setting the RTC from a stale reading would be wrong, so
+ * that caps it; showing one is not, so that does not. Zero means no cap.
+ */
+static bool pcsg_time_frame(
+    POCSAGPagerApp* app,
+    FlexFrameTiming* timing,
+    uint32_t* age_ms,
+    uint32_t max_age_ms) {
     if(app->txrx->txrx_state != PCSGTxRxStateRx) return false;
     if(strncmp(furi_string_get_cstr(app->txrx->preset->name), "FLEX", 4) != 0) return false;
     if(!flex_sampler_get_frame_timing(app->txrx->flex_sampler, timing)) return false;
     const uint32_t age_ticks = furi_get_tick() - timing->tick;
-    if(age_ticks > furi_ms_to_ticks(PCSG_TIME_SYNC_MAX_AGE_MS)) return false;
-    // The five-second limit above is at most 5000 ticks on Flipper.
-    *age_ms = age_ticks * 1000U / furi_kernel_get_tick_frequency();
+    if(max_age_ms != 0U && age_ticks > furi_ms_to_ticks(max_age_ms)) return false;
+    // 64-bit: uncapped, the multiply overflows a uint32 at about 71 minutes.
+    *age_ms = (uint32_t)((uint64_t)age_ticks * 1000ULL / furi_kernel_get_tick_frequency());
     return true;
 }
 
@@ -106,12 +116,18 @@ bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
     furi_assert(out);
     FlexFrameTiming timing;
     uint32_t age_ms;
-    if(!pcsg_time_frame(app, &timing, &age_ms)) return false;
-    // Without the clock words there is no hour to show, only a frame position.
-    if(timing.chase || !timing.clock_valid) return false;
+    // No cap: a reading already taken stays good, and the clock runs on from
+    // it. It used to be dropped five seconds after the last frame.
+    if(!pcsg_time_frame(app, &timing, &age_ms, 0U)) return false;
+    /*
+     * Minutes and seconds come from where the frame sits in the cycle, so they
+     * are known as soon as any frame is, with no clock word involved. Only the
+     * hour needs one, and only the hour waits for it.
+     */
     const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, &out->hour);
     out->minute = sec / 60U;
     out->second = sec % 60U;
+    out->have_hour = timing.have_hour;
     out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes);
     return true;
 }
@@ -123,7 +139,8 @@ void pcsg_time_sync(POCSAGPagerApp* app) {
 
     FlexFrameTiming timing;
     uint32_t age_ms;
-    if(!pcsg_time_frame(app, &timing, &age_ms)) return;
+    // Setting the RTC does need a fresh frame, so this one keeps the cap.
+    if(!pcsg_time_frame(app, &timing, &age_ms, PCSG_TIME_SYNC_MAX_AGE_MS)) return;
     if(timing.sequence == app->time_sync_sequence) return;
     app->time_sync_sequence = timing.sequence;
     if(timing.chase) return;
