@@ -95,7 +95,11 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   **FLEX params** holds everything that describes the transmission rather than
   the page, `Phases` above among them. It shares its row with `Function`, which
   is POCSAG-only, so whichever of the two the current protocol has no use for
-  is not shown at all rather than sitting there reading `N/A`.
+  is not shown at all rather than sitting there reading `N/A`. It carries the
+  centre-button glyph at the right of its row, as `Review & send` does: that is
+  drawn by the firmware's variable item list for any row that opens something
+  instead of holding a setting, so on firmware without that the rows are simply
+  unmarked.
   `Clock` picks which clock BIWs go out: `Off`, `Time`, `Date` or
   `Time+Date`. `UTC` and `DST` are the zone and the standard/daylight flag, and
   `ExtSec` the accurate-seconds trim, 0-7 in steps of 0.9375 s, left at 0
