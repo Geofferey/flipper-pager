@@ -901,6 +901,10 @@ static uint32_t flex_tx_bit_period(bool fast) {
 #define FLEX_TX_CC1101_FSCTRL0 0x0CU
 #define FLEX_TX_CC1101_DEVIATN 0x15U
 #define FLEX_TX_DEVIATN_MID    0x10U // DEVIATION_E = 1, DEVIATION_M = 0
+// What pocsag_tx_preset in pocsag_tx.c sets DEVIATN to, restored after a
+// four-level burst. FSCTRL0 is in no preset at all, so unless it is put back
+// here nothing clears it and the next transmission starts off frequency.
+#define FLEX_TX_DEVIATN_PRESET 0x13U
 
 typedef struct {
     FuriThread* thread;
@@ -926,9 +930,10 @@ static int32_t flex_tx_four_level_thread(void* context) {
      * notification service included, stops until the burst ends.
      */
     furi_thread_set_current_priority(FuriThreadPriorityHighest);
-    write_reg(FLEX_TX_CC1101_DEVIATN, FLEX_TX_DEVIATN_MID);
 
-    // Neither value yet written, so the first symbol always sets the offset.
+    // DEVIATN and the starting offset are set by _start() before this thread
+    // exists: the carrier is already up by then, so leaving them until the
+    // thread is scheduled put the first symbols out at the preset's deviation.
     uint8_t offset = 0U;
     size_t bit = 0;
     uint16_t tail = 0U;
@@ -974,12 +979,28 @@ static int32_t flex_tx_four_level_thread(void* context) {
     return 0;
 }
 
+// Undo everything the burst changed, so what runs next - another mode, the
+// receiver, any other app - gets the radio the preset describes.
+static void flex_tx_four_level_restore(void) {
+    const FlexTxWriteReg write_reg = flex_tx_write_reg();
+    if(!write_reg) return;
+    write_reg(FLEX_TX_CC1101_FSCTRL0, 0x00U);
+    write_reg(FLEX_TX_CC1101_DEVIATN, FLEX_TX_DEVIATN_PRESET);
+}
+
 bool flex_tx_four_level_start(FlexTxEncoder* encoder, const GpioPin* data) {
     furi_assert(encoder);
-    if(!flex_tx_write_reg() || !data || flex_tx_four_level.thread ||
-       encoder->mode.bits != 2U || !encoder->byte_count) {
+    const FlexTxWriteReg write_reg = flex_tx_write_reg();
+    if(!write_reg || !data || flex_tx_four_level.thread || encoder->mode.bits != 2U ||
+       !encoder->byte_count) {
         return false;
     }
+
+    // Synchronously, because the carrier is already up: left to the thread
+    // these land only once it is scheduled, and the symbols clocked out in
+    // between go at the preset's deviation with whatever offset was there.
+    write_reg(FLEX_TX_CC1101_DEVIATN, FLEX_TX_DEVIATN_MID);
+    write_reg(FLEX_TX_CC1101_FSCTRL0, 0x00U);
 
     flex_tx_four_level.encoder = encoder;
     flex_tx_four_level.data = data;
@@ -987,7 +1008,10 @@ bool flex_tx_four_level_start(FlexTxEncoder* encoder, const GpioPin* data) {
     flex_tx_four_level.finished = false;
     flex_tx_four_level.thread = furi_thread_alloc_ex(
         "FlexTx4", 1024, flex_tx_four_level_thread, &flex_tx_four_level);
-    if(!flex_tx_four_level.thread) return false;
+    if(!flex_tx_four_level.thread) {
+        flex_tx_four_level_restore();
+        return false;
+    }
     furi_thread_start(flex_tx_four_level.thread);
     return true;
 }
@@ -1002,6 +1026,10 @@ void flex_tx_four_level_stop(void) {
     furi_thread_join(flex_tx_four_level.thread);
     furi_thread_free(flex_tx_four_level.thread);
     flex_tx_four_level.thread = NULL;
+    // The thread clears the offset on its way out, but not when it was torn
+    // down early, and never the deviation. This is the one path every burst
+    // leaves by, so the radio is put back here.
+    flex_tx_four_level_restore();
 }
 
 LevelDuration flex_tx_encoder_yield(void* context) {

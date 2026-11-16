@@ -169,6 +169,9 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxRicD", FLEX_TX_LONG_CAPCODE_MAX, PCSG_FIELD(tx_config.ric[3]), PCSGSetU32},
     {"TxFlex4Lvl", 0, PCSG_FIELD(tx_config.flex_4level), PCSGSetBool},
     {"TxPhaseMode", PagerTxPhaseCount - 1, PCSG_FIELD(tx_config.phase_mode), PCSGSetU32},
+    // Without this, 6400/4FSK saved as flex_3200 + flex_4level and came back
+    // as 3200/4FSK, which is a different phase pair as well as a different rate.
+    {"TxFlex6400", 0, PCSG_FIELD(tx_config.flex_6400), PCSGSetBool},
 };
 
 static uint32_t pcsg_setting_get(const POCSAGPagerApp* app, const PCSGSetting* setting) {
