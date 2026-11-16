@@ -56,6 +56,21 @@ typedef enum {
     PagerTxMessageModeCount,
 } PagerTxMessageMode;
 
+/*
+ * FLEX only: how the phase a capcode goes out on is decided.
+ *
+ * Cap applies the standard frame and phase embedding rule, which is how
+ * addresses are handed out when an operator lets the number carry the
+ * assignment. Group assigns the phase by hand, for the networks that do not
+ * use that rule - the spec recommends the explicit CAPCODE types wherever
+ * group addresses are in play, and nothing on the air says which was used.
+ */
+typedef enum {
+    PagerTxPhaseCap,
+    PagerTxPhaseGroup,
+    PagerTxPhaseCount,
+} PagerTxPhaseMode;
+
 /** Repeats until Back, and needs the FLEX clock BIWs, so POCSAG has neither. */
 static inline bool pager_tx_mode_is_beacon(PagerTxMessageMode mode) {
     return mode >= PagerTxMessageBeacon;
@@ -92,6 +107,8 @@ typedef struct {
     uint8_t utc_code;
     /** FLEX only: whether the hour sent is daylight time rather than standard. */
     bool dst;
+    /** FLEX only: whether capcodes name their own phase or are assigned one. */
+    uint8_t phase_mode;
     /** Which body to send. Not saved. */
     PagerTxMessageMode message_mode;
     /** Sequence mode: the number this page carries. Not saved. */

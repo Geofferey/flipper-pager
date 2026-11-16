@@ -41,6 +41,10 @@ uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]);
 /** Supported destination address; zero disables a phase and is not an address. */
 bool flex_tx_capcode_valid(uint32_t capcode);
 
+/** The phase the standard embedding rule puts a capcode on. Only meaningful
+ *  for capcodes the operator assigned under that rule. */
+uint8_t flex_tx_capcode_slot(uint32_t capcode);
+
 /** Clocks a prepared burst out as four-level symbols on `data`, from a thread
  *  of its own because the register writes need the SPI bus. The radio must
  *  already be in transmit. */

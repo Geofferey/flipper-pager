@@ -4,6 +4,7 @@ typedef enum {
     PCSGTxConfigProtocol,
     PCSGTxConfigFrequency,
     PCSGTxConfigRic,
+    PCSGTxConfigPhases,
     PCSGTxConfigFunction,
     PCSGTxConfigBaud,
     PCSGTxConfigPolarity,
@@ -42,6 +43,9 @@ const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT] = {"Off", "Time", "Dat
 
 // Off is standard time, which is the bit set; On is daylight, the bit clear.
 static const char* const tx_dst_text[] = {"Off", "On"};
+
+// Indexed by PagerTxPhaseMode.
+static const char* const tx_phase_text[PagerTxPhaseCount] = {"CAP", "Group"};
 
 #define PCSG_FREQ_CORR_COUNT                                                   \
     ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
@@ -122,22 +126,23 @@ static void pocsag_pager_scene_tx_clamp_address(POCSAGPagerApp* app) {
 
 /*
  * FLEX gets one capcode per phase and left and right step between them, the
- * row reading "416297/A". The letter is the setting: pick the phase, then
- * enter the capcode that goes out on it.
+ * row reading "416297/A". What the letter means is the Phases row's to say.
  *
- * It cannot be derived from the capcode. The standard embedding rule, TI
- * SPRA193 section 2.9.2, does give Phase = (Integer(Addr/4)) Modulo 4, but
- * which rule a subscriber was provisioned under is carried by the CAPCODE
- * type letter, which never goes on the air (section 2.9.3). Types A-D apply
- * that rule after subtracting 0-3, and types U-X assign phases 0-3 outright
- * with no rule at all - the form the spec recommends wherever group
- * addresses are in use. Observed traffic agrees: capcodes turn up on phases
- * the rule does not predict. So the phase is a property of the subscriber,
- * not of the number, and the operator has to say which one.
+ * Under CAP it is a readout: the capcode carries its phase in its own address
+ * bits and is filed under the one it names. Under Group it is the setting:
+ * pick the phase, then enter the capcode that goes out on it. Group exists
+ * because the embedding rule is an allocation convention rather than
+ * something the air carries - which rule a subscriber was provisioned under
+ * lives in its CAPCODE type letter, and that is never transmitted (TI SPRA193
+ * section 2.9.3). Types U-X assign phases outright with no rule at all, the
+ * form the spec recommends wherever group addresses are in use, and observed
+ * traffic bears that out: capcodes turn up on phases CAP does not predict.
  *
  * An empty phase shows as "-/B" and sends nothing. Only the phases the
- * current mode carries can be stepped to, so
- * 1600/2 offers A alone and 6400/4 all four.
+ * current mode carries can be stepped to, so 1600/2 offers A alone and
+ * 6400/4 all four - under CAP a capcode naming a phase this mode does not
+ * carry is kept but cannot go out, which is the rule working as written: a
+ * single-phase pager on phase C is not reachable on a one-phase channel.
  *
  * POCSAG has no phases, so it keeps the single RIC it always had.
  */
@@ -198,6 +203,50 @@ static VariableItem* pocsag_pager_scene_tx_row(
     variable_item_set_current_value_index(item, 0);
     variable_item_set_current_value_text(item, disabled);
     return NULL;
+}
+
+/*
+ * CAP means the capcode decides, so choosing it moves every capcode onto the
+ * phase the rule gives it. There is one entry per phase, so two capcodes that
+ * derive to the same phase cannot both be kept: the first wins and the other
+ * is cleared rather than quietly displacing it.
+ */
+static void pocsag_pager_scene_tx_refile_address(POCSAGPagerApp* app) {
+    uint32_t filed[4] = {0};
+    for(uint8_t i = 0; i < 4U; i++) {
+        const uint32_t capcode = app->tx_config.ric[i];
+        if(!capcode) continue;
+        const uint8_t phase = flex_tx_capcode_slot(capcode);
+        if(!filed[phase]) filed[phase] = capcode;
+    }
+    memcpy(app->tx_config.ric, filed, sizeof(filed));
+}
+
+// Whether the capcode names its own phase, or the operator does. FLEX only.
+static void pocsag_pager_scene_tx_show_phases(POCSAGPagerApp* app) {
+    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
+    VariableItem* item = pocsag_pager_scene_tx_row(
+        app, PCSGTxConfigPhases, PagerTxPhaseCount, flex ? NULL : "N/A");
+    if(!item) return;
+    if(app->tx_config.phase_mode >= PagerTxPhaseCount) {
+        app->tx_config.phase_mode = PagerTxPhaseCap;
+    }
+    variable_item_set_current_value_index(item, app->tx_config.phase_mode);
+    variable_item_set_current_value_text(item, tx_phase_text[app->tx_config.phase_mode]);
+}
+
+static void pocsag_pager_scene_tx_set_phases(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    if(app->tx_config.protocol == PagerTxProtocolFlex) {
+        app->tx_config.phase_mode = variable_item_get_current_value_index(item);
+        if(app->tx_config.phase_mode == PagerTxPhaseCap) {
+            pocsag_pager_scene_tx_refile_address(app);
+        }
+    }
+    pocsag_pager_scene_tx_show_phases(app);
+    // Capcodes may have moved, and the letter is read from the slot they sit
+    // in, so the row above is redrawn with them.
+    pocsag_pager_scene_tx_show_address(app);
 }
 
 // The zone word rides with the time, so the UTC and DST rows go when it does.
@@ -326,6 +375,7 @@ static void pocsag_pager_scene_tx_set_message(VariableItem* item) {
 static void pocsag_pager_scene_tx_show_protocol_options(POCSAGPagerApp* app) {
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
     pocsag_pager_scene_tx_show_address(app);
+    pocsag_pager_scene_tx_show_phases(app);
 
     VariableItem* function =
         variable_item_list_get(app->variable_item_list, PCSGTxConfigFunction);
@@ -451,6 +501,12 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     // and value of all three according to the protocol.
     variable_item_list_add(
         app->variable_item_list, "RIC:", 1, pocsag_pager_scene_tx_set_address, app);
+    variable_item_list_add(
+        app->variable_item_list,
+        "Phases:",
+        PagerTxPhaseCount,
+        pocsag_pager_scene_tx_set_phases,
+        app);
     variable_item_list_add(
         app->variable_item_list,
         "Function:",

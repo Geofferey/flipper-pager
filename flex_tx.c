@@ -142,6 +142,22 @@ static FlexTxMode flex_tx_mode(const PocsagTxConfig* config) {
     return (FlexTxMode){0x870CU, 1250U, 1U, 1U, 32U, {0}, 1U};
 }
 
+/*
+ * The standard frame and phase embedding rule, TI SPRA193 section 2.9.2:
+ * "bits 2 and 3 in order, specify phases 00, 01, 10, or 11 for phase 0,1,2,3
+ * (a,b,c,d)", or equivalently Phase = (Integer(Addr/4)) Modulo 4.
+ *
+ * It is an allocation rule, not a decode rule: the operator picks a phase and
+ * hands out a number that carries it, so sequential assignment spreads the
+ * subscriber population over the phases on its own. Whether a given capcode
+ * was handed out that way is recorded in its CAPCODE type letter, which is
+ * never transmitted, so this holds only where the operator says it does. The
+ * Phases row is where that is said.
+ */
+uint8_t flex_tx_capcode_slot(uint32_t capcode) {
+    return (uint8_t)((capcode >> 2) & 3U);
+}
+
 static bool flex_tx_capcode_is_long(uint32_t capcode) {
     return capcode > FLEX_TX_SHORT_CAPCODE_MAX;
 }

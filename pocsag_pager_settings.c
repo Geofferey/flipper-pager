@@ -168,6 +168,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxRicC", FLEX_TX_LONG_CAPCODE_MAX, PCSG_FIELD(tx_config.ric[2]), PCSGSetU32},
     {"TxRicD", FLEX_TX_LONG_CAPCODE_MAX, PCSG_FIELD(tx_config.ric[3]), PCSGSetU32},
     {"TxFlex4Lvl", 0, PCSG_FIELD(tx_config.flex_4level), PCSGSetBool},
+    {"TxPhaseMode", PagerTxPhaseCount - 1, PCSG_FIELD(tx_config.phase_mode), PCSGSetU32},
 };
 
 static uint32_t pcsg_setting_get(const POCSAGPagerApp* app, const PCSGSetting* setting) {
