@@ -22,6 +22,8 @@ typedef enum {
     PCSGCustomEventViewReceiverOK,
     PCSGCustomEventViewReceiverFilterAddress,
     PCSGCustomEventViewReceiverConfig,
+    /** Right on the live list: what the network has said about itself. */
+    PCSGCustomEventViewReceiverNetwork,
     PCSGCustomEventViewReceiverBack,
     PCSGCustomEventViewReceiverOffDisplay,
     PCSGCustomEventViewReceiverUnlock,

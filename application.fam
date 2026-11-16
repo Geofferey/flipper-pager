@@ -37,6 +37,7 @@ PCSG_TX_ONLY = [
     "!pocsag_pager_receiver_info.c",
     "!pocsag_pager_scene_receiver_config.c",
     "!pocsag_pager_scene_receiver_info.c",
+    "!pocsag_pager_scene_network_info.c",
     "!pocsag_pager_scene_review.c",
     "!pocsag_pager_scene_review_info.c",
     "!pocsag_pager_scene_start.c",

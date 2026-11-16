@@ -523,6 +523,15 @@ bool pcsg_view_receiver_input(InputEvent* event, void* context) {
         if(!review) {
             pcsg_receiver->callback(PCSGCustomEventViewReceiverConfig, pcsg_receiver->context);
         }
+    } else if(event->key == InputKeyRight && event->type == InputTypeShort) {
+        // Settings on the left, the network on the right. The saved list has
+        // neither: nothing is being received, so there is no network to show.
+        bool review = false;
+        with_view_model(
+            pcsg_receiver->view, PCSGReceiverModel * model, { review = model->review; }, false);
+        if(!review) {
+            pcsg_receiver->callback(PCSGCustomEventViewReceiverNetwork, pcsg_receiver->context);
+        }
     } else if(event->key == InputKeyOk && event->type == InputTypeLong) {
         with_view_model(
             pcsg_receiver->view,

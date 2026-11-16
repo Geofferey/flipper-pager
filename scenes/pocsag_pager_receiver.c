@@ -299,6 +299,10 @@ bool pocsag_pager_scene_receiver_on_event(void* context, SceneManagerEvent event
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneReceiverConfig);
             consumed = true;
             break;
+        case PCSGCustomEventViewReceiverNetwork:
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneNetworkInfo);
+            consumed = true;
+            break;
         case PCSGCustomEventViewReceiverOffDisplay:
             notification_message(app->notifications, &sequence_display_backlight_off);
             consumed = true;

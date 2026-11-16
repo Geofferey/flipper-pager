@@ -1,0 +1,187 @@
+#include "../pocsag_pager_app_i.h"
+
+/*
+ * What the network has said about itself, reached with right from the live
+ * list. The clock is the centre of it because that is the one field a network
+ * sends constantly; the identity words arrive in a frame here and there, so
+ * the rest fills in around it as they turn up and reads "-" until then.
+ *
+ * Rebuilt on the tick rather than drawn by a view of its own: the clock has to
+ * run, and the widget already places text where this wants it.
+ */
+#define PCSG_NETWORK_TICK_MS 500U
+
+// Centre of the screen, and the rows above and below the clock.
+#define PCSG_NETWORK_MID_X   64
+#define PCSG_NETWORK_TOP_Y   9
+#define PCSG_NETWORK_CLOCK_Y 34
+#define PCSG_NETWORK_DATE_Y  45
+#define PCSG_NETWORK_ROW1_Y  55
+#define PCSG_NETWORK_ROW2_Y  64
+// Inset from either edge for the fields that flank the centre.
+#define PCSG_NETWORK_LEFT_X  2
+#define PCSG_NETWORK_RIGHT_X 126
+
+static void pocsag_pager_scene_network_info_add(
+    POCSAGPagerApp* app,
+    uint8_t x,
+    uint8_t y,
+    Align horizontal,
+    Font font,
+    const char* text) {
+    widget_add_string_element(app->widget, x, y, horizontal, AlignBottom, font, text);
+}
+
+/*
+ * The year on the air is five bits of modulo 32 arithmetic from 1994, so the
+ * field names one year in every 32. Resolve it against the Flipper's own
+ * clock, which is the only thing here that knows roughly when it is.
+ */
+static uint16_t pocsag_pager_scene_network_info_year(uint8_t field) {
+    DateTime now;
+    furi_hal_rtc_get_datetime(&now);
+    const uint16_t base = 1994U + (field & 31U);
+    uint16_t best = base;
+    for(uint16_t year = base; year <= now.year + 16U; year += 32U) {
+        best = year;
+        if(year + 16U >= now.year) break;
+    }
+    return best;
+}
+
+static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
+    widget_reset(app->widget);
+
+    // Each field says for itself whether it has been heard, so whether any of
+    // them has is not asked here: the zeroed struct reads as nothing heard.
+    FlexSystemInfo info = {0};
+    if(app->txrx->flex_sampler) flex_sampler_get_system_info(app->txrx->flex_sampler, &info);
+
+    PCSGNetworkTime now;
+    const bool have_clock = pcsg_time_network(app, &now);
+
+    char text[24];
+
+    // Zone on the left of the top row, the offset the clock is actually on.
+    if(have_clock && now.have_zone) {
+        pcsg_zone_format(now.zone_minutes, text, sizeof(text));
+    } else {
+        strlcpy(text, "No zone", sizeof(text));
+    }
+    pocsag_pager_scene_network_info_add(
+        app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_TOP_Y, AlignLeft, FontSecondary, text);
+
+    // Roaming on the right of it: a word about the network, not about the time.
+    if(info.have_roaming) {
+        pocsag_pager_scene_network_info_add(
+            app,
+            PCSG_NETWORK_RIGHT_X,
+            PCSG_NETWORK_TOP_Y,
+            AlignRight,
+            FontSecondary,
+            info.roaming ? "ROAM" : "HOME");
+    }
+
+    // The centre piece. Big numbers carry digits and the colon, nothing else,
+    // so the no-clock case has to be said in the smaller font.
+    if(have_clock) {
+        snprintf(text, sizeof(text), "%02u:%02u:%02u", now.hour, now.minute, now.second);
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_MID_X, PCSG_NETWORK_CLOCK_Y, AlignCenter, FontBigNumbers, text);
+    } else {
+        pocsag_pager_scene_network_info_add(
+            app,
+            PCSG_NETWORK_MID_X,
+            PCSG_NETWORK_CLOCK_Y - 8,
+            AlignCenter,
+            FontPrimary,
+            "Waiting for");
+        pocsag_pager_scene_network_info_add(
+            app,
+            PCSG_NETWORK_MID_X,
+            PCSG_NETWORK_CLOCK_Y + 2,
+            AlignCenter,
+            FontPrimary,
+            "the network");
+    }
+
+    if(info.have_date) {
+        snprintf(
+            text,
+            sizeof(text),
+            "%u-%02u-%02u",
+            pocsag_pager_scene_network_info_year(info.year_field),
+            info.month,
+            info.day);
+    } else {
+        strlcpy(text, "no date", sizeof(text));
+    }
+    pocsag_pager_scene_network_info_add(
+        app, PCSG_NETWORK_MID_X, PCSG_NETWORK_DATE_Y, AlignCenter, FontSecondary, text);
+
+    // Who is transmitting: SSID1 on the left, SSID2 on the right.
+    if(info.have_ssid1) {
+        snprintf(text, sizeof(text), "LID %u/%u", info.local_id, info.coverage_zone);
+    } else {
+        strlcpy(text, "LID -", sizeof(text));
+    }
+    pocsag_pager_scene_network_info_add(
+        app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW1_Y, AlignLeft, FontSecondary, text);
+
+    if(info.have_ssid2) {
+        snprintf(text, sizeof(text), "CC %u", info.country_code);
+    } else {
+        strlcpy(text, "CC -", sizeof(text));
+    }
+    pocsag_pager_scene_network_info_add(
+        app, PCSG_NETWORK_RIGHT_X, PCSG_NETWORK_ROW1_Y, AlignRight, FontSecondary, text);
+
+    // Where the frame grid is, and the seconds trim riding with the zone.
+    FlexFrameTiming timing;
+    if(app->txrx->flex_sampler &&
+       flex_sampler_get_frame_timing(app->txrx->flex_sampler, &timing)) {
+        snprintf(text, sizeof(text), "F%u/C%u", timing.frame, timing.cycle);
+    } else {
+        strlcpy(text, "F-/C-", sizeof(text));
+    }
+    pocsag_pager_scene_network_info_add(
+        app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW2_Y, AlignLeft, FontSecondary, text);
+
+    if(info.have_ext_sec) {
+        snprintf(text, sizeof(text), "ExtSec %u", info.ext_sec);
+    } else {
+        strlcpy(text, "ExtSec -", sizeof(text));
+    }
+    pocsag_pager_scene_network_info_add(
+        app, PCSG_NETWORK_RIGHT_X, PCSG_NETWORK_ROW2_Y, AlignRight, FontSecondary, text);
+}
+
+void pocsag_pager_scene_network_info_on_enter(void* context) {
+    POCSAGPagerApp* app = context;
+    scene_manager_set_scene_state(
+        app->scene_manager, POCSAGPagerSceneNetworkInfo, furi_get_tick());
+    pocsag_pager_scene_network_info_draw(app);
+    view_dispatcher_switch_to_view(app->view_dispatcher, POCSAGPagerViewWidget);
+}
+
+bool pocsag_pager_scene_network_info_on_event(void* context, SceneManagerEvent event) {
+    POCSAGPagerApp* app = context;
+    if(event.type != SceneManagerEventTypeTick) return false;
+    /*
+     * The app ticks ten times a second and a rebuild frees and reallocates
+     * every element on the screen, which is far more than a clock showing
+     * seconds needs. The scene state carries when it was last redrawn.
+     */
+    const uint32_t now = furi_get_tick();
+    const uint32_t last =
+        scene_manager_get_scene_state(app->scene_manager, POCSAGPagerSceneNetworkInfo);
+    if(now - last < furi_ms_to_ticks(PCSG_NETWORK_TICK_MS)) return true;
+    scene_manager_set_scene_state(app->scene_manager, POCSAGPagerSceneNetworkInfo, now);
+    pocsag_pager_scene_network_info_draw(app);
+    return true;
+}
+
+void pocsag_pager_scene_network_info_on_exit(void* context) {
+    POCSAGPagerApp* app = context;
+    widget_reset(app->widget);
+}

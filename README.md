@@ -221,6 +221,21 @@ FLEX decoding features:
   fragments are only classified when the decoder has already marked them as
   suspect continuations.
 
+**Network info** is reached with right from the live message list, as settings
+are with left. It shows what the network has said about itself, with its clock
+as the centre piece: the zone and the offset in force, the date, the local ID
+and coverage zone from the SSID1 word, the country code from SSID2, the
+roaming flag from the frame information word, the frame and cycle, and the
+accurate-seconds trim. A field reads `-` until a word carrying it arrives, so
+a network that never sends one is told apart from one that sends it as zero.
+The saved-log list has no network behind it, so right does nothing there.
+
+The accurate-seconds trim is read from bits 18-20 of the system message word,
+where the decoder datasheets put it. Bit 20 is also what this app's clock
+reads as the standard/daylight flag, which the same datasheets put at bit 16,
+so the two readings cannot both be right. Both are shown and neither is
+adjusted to suit the other.
+
 ## Logging
 
 Messages are written to the SD card as they arrive. A hidden SD-side index
