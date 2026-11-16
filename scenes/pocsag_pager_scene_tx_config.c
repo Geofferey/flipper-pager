@@ -106,16 +106,17 @@ static void pocsag_pager_scene_tx_set_frequency(VariableItem* item) {
     pocsag_pager_scene_tx_show_frequency(item, app->tx_config.frequency);
 }
 
-// FLEX short capcodes occupy their own range, so the address has to be moved
-// into it when the protocol changes and when the scene opens on it.
+// Clear unsupported destinations instead of silently sending to another address.
 static void pocsag_pager_scene_tx_clamp_address(POCSAGPagerApp* app) {
-    if(app->tx_config.protocol != PagerTxProtocolFlex) return;
+    if(app->tx_config.protocol != PagerTxProtocolFlex) {
+        if(app->tx_config.ric[0] > PCSG_TX_RIC_MAX) app->tx_config.ric[0] = 0U;
+        return;
+    }
     for(uint8_t i = 0; i < 4U; i++) {
         uint32_t* capcode = &app->tx_config.ric[i];
         // Zero means the phase sends nothing, so it is left alone.
         if(*capcode == 0U) continue;
-        if(*capcode < FLEX_TX_SHORT_CAPCODE_MIN) *capcode = FLEX_TX_SHORT_CAPCODE_MIN;
-        if(*capcode > FLEX_TX_SHORT_CAPCODE_MAX) *capcode = FLEX_TX_SHORT_CAPCODE_MAX;
+        if(!flex_tx_capcode_valid(*capcode)) *capcode = 0U;
     }
 }
 

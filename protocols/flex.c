@@ -2175,10 +2175,11 @@ const SubGhzProtocolDecoder subghz_protocol_flex_decoder = {
     .free = subghz_protocol_decoder_flex_free,
     .reset = subghz_protocol_decoder_flex_reset,
     .feed = subghz_protocol_decoder_flex_feed,
-    .get_hash_data = subghz_protocol_decoder_flex_get_hash_data,
+    // Pager owns duplicate filtering, message views and saved-log loading.
+    .get_hash_data = NULL,
     .serialize = subghz_protocol_decoder_flex_serialize,
-    .deserialize = subghz_protocol_decoder_flex_deserialize,
-    .get_string = subghz_protocol_decoder_flex_get_string,
+    .deserialize = NULL,
+    .get_string = NULL,
 };
 
 const SubGhzProtocolEncoder subghz_protocol_flex_encoder = {
@@ -2192,8 +2193,7 @@ const SubGhzProtocolEncoder subghz_protocol_flex_encoder = {
 const SubGhzProtocol subghz_protocol_flex = {
     .name = SUBGHZ_PROTOCOL_FLEX_NAME,
     .type = SubGhzProtocolTypeStatic,
-    .flag = SubGhzProtocolFlag_FM | SubGhzProtocolFlag_Decodable | SubGhzProtocolFlag_Save |
-            SubGhzProtocolFlag_Load,
+    .flag = SubGhzProtocolFlag_FM | SubGhzProtocolFlag_Decodable | SubGhzProtocolFlag_Save,
     .decoder = &subghz_protocol_flex_decoder,
     .encoder = &subghz_protocol_flex_encoder,
 };

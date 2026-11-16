@@ -87,7 +87,7 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
      * what is actually going out rather than what is stored - a capcode whose
      * phase the mode does not carry is simply not listed.
      */
-    char capcodes[40] = "No capcode";
+    char capcodes[4U * 13U] = "No capcode";
     {
         uint8_t order[4];
         const uint8_t phases = flex_tx_mode_phases(&app->tx_config, order);

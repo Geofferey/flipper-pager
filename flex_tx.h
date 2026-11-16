@@ -6,6 +6,9 @@
 
 #define FLEX_TX_SHORT_CAPCODE_MIN 1U
 #define FLEX_TX_SHORT_CAPCODE_MAX 1933312U
+/** Long address set 1-2, supported by the receiver's capcode conversion. */
+#define FLEX_TX_LONG_CAPCODE_MIN  2101249U
+#define FLEX_TX_LONG_CAPCODE_MAX  1075843072U
 #define FLEX_TX_BAUD              1600U
 #define FLEX_TX_FAST_BAUD         3200U
 /** A frame is 3000 bits at 1600 baud, so a slot on the grid is exact. */
@@ -16,7 +19,7 @@ typedef struct FlexTxEncoder FlexTxEncoder;
 FlexTxEncoder* flex_tx_encoder_alloc(void);
 void flex_tx_encoder_free(FlexTxEncoder* encoder);
 
-/** Build a FLEX burst in the selected mode for a short-address page. */
+/** Build a FLEX burst in the selected mode for short or long-address pages. */
 bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* config);
 
 /** Frames the prepared burst holds the air for, which is what decides when the
@@ -37,6 +40,9 @@ uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]);
 
 /** The phase a capcode belongs to, which is encoded in its own address. */
 uint8_t flex_tx_capcode_slot(uint32_t capcode);
+
+/** Supported destination address; zero disables a phase and is not an address. */
+bool flex_tx_capcode_valid(uint32_t capcode);
 
 /** Clocks a prepared burst out as four-level symbols on `data`, from a thread
  *  of its own because the register writes need the SPI bus. The radio must

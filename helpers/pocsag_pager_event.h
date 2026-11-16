@@ -15,6 +15,7 @@ typedef enum {
     PCSGCustomEventSceneSettingFreqCorr,
     PCSGCustomEventSceneCapcodeInputDone,
     PCSGCustomEventTxRicInputDone,
+    PCSGCustomEventTxRicInputInvalid,
     PCSGCustomEventTxMessageInputDone,
     PCSGCustomEventTxSend,
 

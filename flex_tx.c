@@ -153,8 +153,15 @@ static uint8_t flex_tx_capcode_phase(uint32_t capcode) {
     return (uint8_t)((capcode >> 2) & 3U);
 }
 
-static bool flex_tx_capcode_valid(uint32_t capcode) {
-    return capcode >= FLEX_TX_SHORT_CAPCODE_MIN && capcode <= FLEX_TX_SHORT_CAPCODE_MAX;
+static bool flex_tx_capcode_is_long(uint32_t capcode) {
+    return capcode > FLEX_TX_SHORT_CAPCODE_MAX;
+}
+
+bool flex_tx_capcode_valid(uint32_t capcode) {
+    if(capcode >= FLEX_TX_SHORT_CAPCODE_MIN && capcode <= FLEX_TX_SHORT_CAPCODE_MAX) {
+        return true;
+    }
+    return capcode >= FLEX_TX_LONG_CAPCODE_MIN && capcode <= FLEX_TX_LONG_CAPCODE_MAX;
 }
 
 uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]) {
@@ -357,6 +364,30 @@ static void flex_tx_clock(
     *frame = (ms % FLEX_TX_CYCLE_MS) / FLEX_TX_FRAME_MS;
     *hour = hours % 24U;
     *on_air = datetime;
+}
+
+/*
+ * A long address is two words. Inverting what flex_decode_phase() in
+ * protocols/flex.c reads back:
+ *
+ *   capcode = first + ((second ^ 0x1FFFFF) << 15) + 0x1F9000
+ *
+ * Only some first words mark an address as long, and taking the low fifteen
+ * bits for it always lands below 0x8001, which is one of those ranges - so the
+ * split picks itself. A zero word is what a receiver treats as an empty slot,
+ * so when the low bits come to zero the word borrows 0x8000 from the high part
+ * instead, which is still inside the same range.
+ */
+static void flex_tx_long_address(uint32_t capcode, uint32_t* first, uint32_t* second) {
+    const uint32_t value = capcode - 0x1F9000UL;
+    uint32_t low = value & 0x7FFFUL;
+    uint32_t high = value >> 15;
+    if(low == 0U) {
+        low = 0x8000UL;
+        high--;
+    }
+    *first = flex_tx_encode_word(low);
+    *second = flex_tx_encode_word((high ^ 0x001FFFFFUL) & FLEX_TX_DATA_MASK);
 }
 
 static uint32_t flex_tx_short_address(uint32_t capcode) {
@@ -633,25 +664,44 @@ static bool flex_tx_write_frame(
     }
 
     const uint8_t address_start = (uint8_t)(1U + clock_count);
-    const uint8_t message_start = (uint8_t)(address_start + 2U);
     for(uint8_t p = 0; p < mode.phases; p++) {
         const uint8_t index = mode.order[p];
+        const uint32_t capcode = config->ric[index];
         // Every phase on the air gets its own block information word and the
         // clock, so a pager listening on any of them finds a valid frame.
-        const bool carries = !idle && flex_tx_capcode_valid(config->ric[index]);
-        const uint8_t vector_start = carries ? (uint8_t)(address_start + 1U) : address_start;
+        const bool carries = !idle && flex_tx_capcode_valid(capcode);
+        // Long addresses consume two address and two vector slots per phase.
+        const bool long_address = carries && flex_tx_capcode_is_long(capcode);
+        const uint8_t words = long_address ? 2U : 1U;
+        const uint8_t vector_start = carries ? (uint8_t)(address_start + words) : address_start;
+        const uint8_t message_start = (uint8_t)(vector_start + words);
         phase_words[index][0] = flex_tx_biw1(address_start, vector_start);
         for(uint8_t i = 0; i < clock_count; i++) {
             phase_words[index][1U + i] = clock_words[i];
         }
         if(!carries) continue;
-        phase_words[index][address_start] = flex_tx_short_address(config->ric[index]);
-        phase_words[index][vector_start] = tone_only ?
-                                               flex_tx_tone_vector() :
-                                               flex_tx_alpha_vector(
-                                                   message_start, message_word_count);
-        for(uint8_t i = 0; i < message_word_count; i++) {
-            phase_words[index][message_start + i] = message_words[i];
+        if(long_address) {
+            flex_tx_long_address(
+                capcode,
+                &phase_words[index][address_start],
+                &phase_words[index][address_start + 1U]);
+        } else {
+            phase_words[index][address_start] = flex_tx_short_address(capcode);
+        }
+        const uint32_t vector = tone_only ?
+                                    flex_tx_tone_vector() :
+                                    flex_tx_alpha_vector(message_start, message_word_count);
+        phase_words[index][vector_start] = vector;
+        // The second vector slot holds the alpha header (counted in length),
+        // or five BCD fill digits for tone-only pages. See protocols/flex.c.
+        uint8_t first = 0U;
+        if(long_address) {
+            phase_words[index][vector_start + 1U] =
+                tone_only ? flex_tx_encode_word(0xCCCCCU) : message_words[0];
+            first = tone_only ? 0U : 1U;
+        }
+        for(uint8_t i = first; i < message_word_count; i++) {
+            phase_words[index][message_start + i - first] = message_words[i];
         }
     }
 

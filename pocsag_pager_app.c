@@ -120,10 +120,12 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
         POCSAGPagerViewVariableItemList,
         variable_item_list_get_view(app->variable_item_list));
 
-    // SubMenu
+    // Only the receiver has a main menu.
+#ifndef PCSG_TX_APP
     app->submenu = submenu_alloc();
     view_dispatcher_add_view(
         app->view_dispatcher, POCSAGPagerViewSubmenu, submenu_get_view(app->submenu));
+#endif
 
     // Widget
     app->widget = widget_alloc();
@@ -137,12 +139,14 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
         POCSAGPagerViewNumberInput,
         number_input_get_view(app->number_input));
 
-    // Text Input
+    // Message composition belongs to the transmitter.
+#ifdef PCSG_TX_APP
     app->text_input = text_input_alloc();
     view_dispatcher_add_view(
         app->view_dispatcher,
         POCSAGPagerViewTextInput,
         text_input_get_view(app->text_input));
+#endif
 
 #ifndef PCSG_TX_APP
     // Receiver
@@ -358,8 +362,10 @@ void pocsag_pager_app_free(POCSAGPagerApp* app) {
 #endif
 
     // Submenu
+#ifndef PCSG_TX_APP
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewSubmenu);
     submenu_free(app->submenu);
+#endif
 
     // Variable Item List
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewVariableItemList);
@@ -374,8 +380,10 @@ void pocsag_pager_app_free(POCSAGPagerApp* app) {
     number_input_free(app->number_input);
 
     // Text Input
+#ifdef PCSG_TX_APP
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewTextInput);
     text_input_free(app->text_input);
+#endif
 
 #ifndef PCSG_TX_APP
     // Receiver

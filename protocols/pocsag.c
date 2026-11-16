@@ -588,10 +588,11 @@ const SubGhzProtocolDecoder subghz_protocol_pocsag_decoder = {
     .free = subghz_protocol_decoder_pocsag_free,
     .reset = subghz_protocol_decoder_pocsag_reset,
     .feed = subghz_protocol_decoder_pocsag_feed,
-    .get_hash_data = subghz_protocol_decoder_pocsag_get_hash_data,
+    // Pager owns duplicate filtering, message views and saved-log loading.
+    .get_hash_data = NULL,
     .serialize = subghz_protocol_decoder_pocsag_serialize,
-    .deserialize = subghz_protocol_decoder_pocsag_deserialize,
-    .get_string = subhz_protocol_decoder_pocsag_get_string,
+    .deserialize = NULL,
+    .get_string = NULL,
 };
 
 const SubGhzProtocolEncoder subghz_protocol_pocsag_encoder = {
@@ -605,8 +606,7 @@ const SubGhzProtocolEncoder subghz_protocol_pocsag_encoder = {
 const SubGhzProtocol subghz_protocol_pocsag = {
     .name = SUBGHZ_PROTOCOL_POCSAG_NAME,
     .type = SubGhzProtocolTypeStatic,
-    .flag = SubGhzProtocolFlag_FM | SubGhzProtocolFlag_Decodable | SubGhzProtocolFlag_Save |
-            SubGhzProtocolFlag_Load,
+    .flag = SubGhzProtocolFlag_FM | SubGhzProtocolFlag_Decodable | SubGhzProtocolFlag_Save,
 
     .decoder = &subghz_protocol_pocsag_decoder,
     .encoder = &subghz_protocol_pocsag_encoder,

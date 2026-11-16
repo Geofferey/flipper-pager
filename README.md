@@ -1,6 +1,9 @@
 # Flipper Pager
 
-POCSAG and FLEX pager receiver, plus a POCSAG transmitter, for the Flipper Zero CC1101 radio.
+POCSAG and FLEX pager receiver and transmitter for the Flipper Zero CC1101 radio.
+The receiver (`flipper_pager.fap`) and transmitter (`flipper_pager_tx.fap`) are
+separate apps built from this tree. Install both in `/ext/apps/Sub-GHz` to use
+the Send messages handover between them.
 
 Protocol implementation made by @Shmuma, 512 and 2400 speeds support by @htotoo.
 Plugin based on [Weather Station](https://github.com/flipperdevices/flipperzero-firmware/tree/dev/applications/plugins/weather_station) from OFW.
@@ -67,11 +70,16 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   the log. The status bar shows the session time and message count. Config and
   address filtering are available only during live reception.
 - **Send messages** composes an alphanumeric POCSAG page for a destination RIC.
-  It can also send an alphanumeric FLEX page to a short capcode. Select the
+  It can also send an alphanumeric or tone-only FLEX page to short or long
+  capcodes. Select the
   protocol, frequency and polarity, enter up to 80 POCSAG or 240 FLEX characters, review the
   complete page, then explicitly press Send. POCSAG supports functions 0-3 and
   512/1200/2400 baud. FLEX supports 1600/2FSK, 3200/2FSK, 3200/4FSK and
-  6400/4FSK with short capcodes 1-1933312. Four-level modes are offered only
+  6400/4FSK with short capcodes 1-1933312 and long address set 1-2 capcodes
+  2101249-1075843072. Other long-address sets are not supported. Zero clears a
+  phase; addresses in the gap between the two ranges are rejected. Each phase
+  can carry a short or long capcode independently, and the full capcodes are
+  retained when switching between the RX and TX apps. Four-level modes are offered only
   when the firmware exports `furi_hal_subghz_write_reg`; the symbol is resolved
   at runtime so the same app can still load on older firmware. These modes
   use the internal CC1101, with a thread driving GPIO and frequency-offset
@@ -283,20 +291,28 @@ and bitstream polarity use the same Mayhem
 [`proc_fsk` implementation](https://github.com/portapack-mayhem/mayhem-firmware/blob/next/firmware/baseband/proc_fsk.cpp)
 already referenced by the POCSAG transmitter.
 
+Long address set 1-2 encoding follows the conversion and address assignments
+in TI's [SPRA193](https://www.ti.com/lit/pdf/spra193), sections 2.9.4-2.9.6,
+and the inverse already used by this tree's `protocols/flex.c`. The receiver
+also supplies the reference for the second vector slot: the alphanumeric
+header moves there, while tone-only pages use five BCD fill digits. Fixed
+address-word fixtures check the encoder independently of the RX round trip.
+
 The four-level transmitter combines GPIO-controlled 2-FSK with per-symbol
 `FSCTRL0` writes. Register scaling is documented in the
 [Texas Instruments CC1101 datasheet](https://www.ti.com/lit/ds/symlink/cc1101.pdf)
 (FSCTRL0 and DEVIATN). This register-driven approach needs RF validation;
 the register definitions alone do not establish settling performance at 6400 bps.
 Mode markers and A/B/C/D phase ordering follow this app's `protocols/flex.c`.
-At 6400/4, alternating symbols carry A/B and C/D at 3200 symbols/s; only A
-carries the page. Sync 1 and FIW remain at 1600 symbols/s. Timing uses cycle
+At 6400/4, alternating symbols carry A/B and C/D at 3200 symbols/s; each
+configured phase carries the page. Sync 1 and FIW remain at 1600 symbols/s. Timing uses cycle
 deadlines to preserve the 312.5 us symbol period and 1.875 s frame duration.
 
 `python tests/test_flex_tx.py` compiles the actual encoder and symbol thread
 with host hardware shims, then checks all four modes using the actual receiver.
 It covers sync acquisition, FIW, phase ordering, both polarities, 1-240 character
-pages, tone pages, fragments, beacons, exact timing, counter wrap and cancellation.
+pages, tone pages, fragments, beacons, short/long address boundaries, mixed
+phases, all clock-word combinations, exact timing, counter wrap and cancellation.
 Use a GCC/Clang host compiler with sanitizers, or set `CC=cl` in a Visual Studio
 developer environment for AddressSanitizer. These checks do not exercise RF
 settling or interrupt jitter on a Flipper; 6400/4 still needs an on-device test.

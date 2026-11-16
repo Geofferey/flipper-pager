@@ -70,16 +70,23 @@ static void furi_hal_rtc_get_datetime(DateTime* out) { *out=rtc; }
 
 TESTS = r'''
 static void test_cancel(void) { flex_tx_four_level.running=false; }
-static unsigned pages;
-static char received[4096];
+static unsigned pages[4];
+static char received[4][4096];
 static void on_page(SubGhzProtocolDecoderBase* base,void* context) {
-    (void)context;
+    const PocsagTxConfig* c=context;
     SubGhzProtocolDecoderFlex* d=(void*)base;
-    assert(d->phase=='A');
-    assert(d->capcode==12345);
-    pages++;
-    strcpy(received,furi_string_get_cstr(d->generic.result_msg));
-    if(strncmp(received,"ALN: ",5)==0) memmove(received,received+5,strlen(received+5)+1);
+    assert(d->phase>='A' && d->phase<='D');
+    const unsigned phase=d->phase-'A';
+    assert(c->ric[phase] && d->capcode==c->ric[phase]);
+    assert(!d->page_suspect && !d->page_repaired);
+    pages[phase]++;
+    char* text=received[phase];
+    strcpy(text,furi_string_get_cstr(d->generic.result_msg));
+    if(strncmp(text,"ALN: ",5)==0) memmove(text,text+5,strlen(text+5)+1);
+    if(!c->message[0]) {
+        assert(strcmp(text,c->ric[phase]>FLEX_TX_SHORT_CAPCODE_MAX ?
+            "TON:         " : "TON: Tone only")==0);
+    }
 }
 static void verify(FlexTxEncoder* e,PocsagTxConfig* c,unsigned mode) {
     static const unsigned frame_bytes[]={375,732,732,1446};
@@ -112,8 +119,9 @@ static void verify(FlexTxEncoder* e,PocsagTxConfig* c,unsigned mode) {
     }
     SubGhzProtocolDecoderFlex* d=subghz_protocol_decoder_flex_alloc(NULL);
     d->base.callback=on_page;
+    d->base.context=c;
     d->four_level_path=mode>=2;
-    pages=0; received[0]=0;
+    memset(pages,0,sizeof(pages)); memset(received,0,sizeof(received));
     size_t symbol=e->frame_base*8;
     for(unsigned f=0;f<e->frames;f++) {
         const size_t base=e->frame_base+f*frame_bytes[mode];
@@ -145,22 +153,57 @@ static void verify(FlexTxEncoder* e,PocsagTxConfig* c,unsigned mode) {
         assert(d->stats.frames_completed==f+1);
         assert(d->baud==rates[mode] && d->levels==levels[mode]);
     }
-    if(c->message_mode==PagerTxMessageTyped) {
-        assert(pages>=1);
-        if(c->message[0]) {
-            if(strcmp(received,c->message)) fprintf(stderr,"mode=%u len=%zu received=[%s] expected=[%s]\n",mode,strlen(c->message),received,c->message);
-            assert(strcmp(received,c->message)==0);
+    uint8_t order[4];
+    const unsigned phases=flex_tx_mode_phases(c,order);
+    for(unsigned phase=0;phase<4;phase++) {
+        bool active=false;
+        for(unsigned p=0;p<phases;p++) if(order[p]==phase) active=true;
+        if(!active || !flex_tx_capcode_valid(c->ric[phase])) {
+            assert(pages[phase]==0);
+            continue;
         }
-    } else if(c->message_mode==PagerTxMessageBeacon) assert(pages==0);
-    else if(e->frames==3) { assert(pages==1); assert(strcmp(received,c->message)==0); }
-    else assert(pages==0);
+        if(c->message_mode==PagerTxMessageTyped) {
+            assert(pages[phase]>=1);
+            if(c->message[0]) {
+                if(strcmp(received[phase],c->message)) fprintf(stderr,
+                    "mode=%u phase=%u cap=%u len=%zu received=[%s] expected=[%s]\n",
+                    mode,phase,c->ric[phase],strlen(c->message),received[phase],c->message);
+                assert(strcmp(received[phase],c->message)==0);
+            }
+        } else if(c->message_mode==PagerTxMessageBeacon) assert(pages[phase]==0);
+        else if(e->frames==3) {
+            assert(pages[phase]==1); assert(strcmp(received[phase],c->message)==0);
+        } else assert(pages[phase]==0);
+    }
+    assert(d->stats.pages_bad_header==0 && d->stats.pages_bad_range==0);
     subghz_protocol_decoder_flex_free(d);
 }
 int main(void) {
     unsigned cases=0;
     const unsigned lengths[]={0,1,80,81,160,240};
+    // TI SPRA193 section 2.9.4 independently specifies these address words.
+    const uint32_t vectors[][3]={
+        {2101249U,1U,0x1FFFFEU},
+        {2134016U,0x8000U,0x1FFFFEU},
+        {2134017U,1U,0x1FFFFDU},
+        {1075843072U,0x8000U,0x1F7FFFU},
+    };
+    for(unsigned i=0;i<COUNT_OF(vectors);i++) {
+        uint32_t first,second;
+        flex_tx_long_address(vectors[i][0],&first,&second);
+        assert(first==flex_tx_encode_word(vectors[i][1]));
+        assert(second==flex_tx_encode_word(vectors[i][2]));
+    }
+    const uint32_t invalid[]={0U,1933313U,2009088U,2101248U,1075843073U,UINT32_MAX};
+    for(unsigned i=0;i<COUNT_OF(invalid);i++) {
+        PocsagTxConfig c={.protocol=PagerTxProtocolFlex,.ric={invalid[i]}};
+        FlexTxEncoder* e=flex_tx_encoder_alloc();
+        assert(!flex_tx_capcode_valid(invalid[i]));
+        assert(!flex_tx_encoder_prepare(e,&c));
+        flex_tx_encoder_free(e);
+    }
     for(unsigned mode=0;mode<4;mode++) for(unsigned inv=0;inv<2;inv++) {
-        PocsagTxConfig c={.protocol=PagerTxProtocolFlex,.ric=12345,
+        PocsagTxConfig c={.protocol=PagerTxProtocolFlex,.ric={12345},
             .flex_3200=mode!=0,.flex_4level=mode>=2,.flex_6400=mode==3,
             .inverted=inv,.clock_biws=PCSG_TX_CLOCK_BOTH};
         FlexTxEncoder* e=flex_tx_encoder_alloc();
@@ -188,8 +231,42 @@ int main(void) {
         }
         flex_tx_encoder_free(e);
     }
+    const uint32_t capcodes[]={1U,1933312U,2101249U,2134016U,2134017U,
+        1075843071U,1075843072U};
+    for(unsigned mode=0;mode<4;mode++) for(unsigned inv=0;inv<2;inv++) {
+        PocsagTxConfig c={.protocol=PagerTxProtocolFlex,
+            .flex_3200=mode!=0,.flex_4level=mode>=2,.flex_6400=mode==3,.inverted=inv};
+        FlexTxEncoder* e=flex_tx_encoder_alloc();
+        for(unsigned cap=0;cap<COUNT_OF(capcodes)+2;cap++) {
+            memset(c.ric,0,sizeof(c.ric));
+            if(cap<COUNT_OF(capcodes)) c.ric[0]=capcodes[cap];
+            else if(cap==COUNT_OF(capcodes)) {
+                // Mixed short/long phases, including an empty phase B.
+                c.ric[0]=2134016U; c.ric[2]=12345U; c.ric[3]=2101261U;
+            } else {
+                c.ric[0]=2101249U; c.ric[1]=2101253U;
+                c.ric[2]=2101257U; c.ric[3]=2101261U;
+            }
+            for(unsigned clock=0;clock<PCSG_TX_CLOCK_COUNT;clock++) {
+                c.clock_biws=clock;
+                for(unsigned n=0;n<COUNT_OF(lengths);n++) {
+                    for(unsigned i=0;i<lengths[n];i++) c.message[i]='A'+i%26;
+                    c.message[lengths[n]]=0;
+                    assert(flex_tx_encoder_prepare(e,&c)); verify(e,&c,mode); cases++;
+                }
+            }
+            c.message_mode=PagerTxMessageBeaconSeq;
+            strcpy(c.message,"LONG CAPCODE BEACON SEQUENCE");
+            rtc.minute=1; rtc.second=53;
+            assert(flex_tx_encoder_prepare(e,&c)); verify(e,&c,mode); cases++;
+            c.message_mode=PagerTxMessageTyped;
+            rtc.minute=rtc.second=0;
+        }
+        flex_tx_encoder_free(e);
+    }
     printf("PASS: %u TX cases: four modes, both polarities, tone, 1-240 chars, fragmentation,\n"
-           "beacons, phase decoding, exact frame timing, timer wrap, cancellation and cleanup.\n",cases);
+           "short/long boundaries, mixed phases, all clock options, beacons,\n"
+           "exact frame timing, timer wrap, cancellation and cleanup.\n",cases);
 }
 '''
 

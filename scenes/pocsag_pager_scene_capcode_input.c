@@ -10,7 +10,11 @@
  * frequency entry in the app asks the same question.
  */
 static bool pocsag_pager_scene_capcode_input_is_frequency(uint32_t field) {
-    return field == PCSGNumberFieldTxFrequency || field == PCSGNumberFieldRxFrequency;
+#ifdef PCSG_TX_APP
+    return field == PCSGNumberFieldTxFrequency;
+#else
+    return field == PCSGNumberFieldRxFrequency;
+#endif
 }
 
 // Round onto the arrow step, so typing and stepping cannot disagree and the
@@ -23,8 +27,11 @@ static int32_t pocsag_pager_scene_capcode_input_round(int32_t hz) {
 
 static uint32_t* pocsag_pager_scene_capcode_input_field(POCSAGPagerApp* app) {
     switch(scene_manager_get_scene_state(app->scene_manager, POCSAGPagerSceneCapcodeInput)) {
+#ifdef PCSG_TX_APP
     case PCSGNumberFieldTxFrequency:
+    default:
         return &app->tx_config.frequency;
+#else
     case PCSGNumberFieldRxFrequency:
         return &app->txrx->preset->frequency;
     case PCSGNumberFieldCapcodeMax:
@@ -37,10 +44,13 @@ static uint32_t* pocsag_pager_scene_capcode_input_field(POCSAGPagerApp* app) {
         return &app->filter.ric_min;
     case PCSGNumberFieldRicMax:
         return &app->filter.ric_max;
+#endif
     case PCSGNumberFieldFreqCorrection:
         return (uint32_t*)&app->filter.frequency_correction_hz;
+#ifndef PCSG_TX_APP
     default:
         return &app->filter.capcode_min;
+#endif
     }
 }
 
@@ -59,8 +69,10 @@ static void pocsag_pager_scene_capcode_input_callback(void* context, int32_t num
             number = pocsag_pager_scene_capcode_input_round(number);
         }
         *pocsag_pager_scene_capcode_input_field(app) = number;
+#ifndef PCSG_TX_APP
         // Retune on returning to the receiver, as changing the channel does.
         if(field == PCSGNumberFieldRxFrequency) app->txrx->rx_restart = true;
+#endif
     }
 
     view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneCapcodeInputDone);
@@ -70,20 +82,27 @@ void pocsag_pager_scene_capcode_input_on_enter(void* context) {
     POCSAGPagerApp* app = context;
     const uint32_t field =
         scene_manager_get_scene_state(app->scene_manager, POCSAGPagerSceneCapcodeInput);
+#ifndef PCSG_TX_APP
     const bool frame = field == PCSGNumberFieldFrameMin || field == PCSGNumberFieldFrameMax;
     const bool ric = field == PCSGNumberFieldRicMin || field == PCSGNumberFieldRicMax;
     const PCSGCapcodeFilter mode = frame ? app->filter.frame_filter :
                                    ric   ? app->filter.ric_filter :
                                            app->filter.capcode_filter;
     const bool range = mode == PCSGCapcodeFilterRange;
+#endif
 
     const char* header;
     int32_t min = 0;
     int32_t max = PCSG_CAPCODE_MAX;
     switch(field) {
+#ifdef PCSG_TX_APP
     case PCSGNumberFieldTxFrequency:
+    default:
+        header = "TX frequency, Hz";
+#else
     case PCSGNumberFieldRxFrequency:
-        header = field == PCSGNumberFieldRxFrequency ? "RX frequency, Hz" : "TX frequency, Hz";
+        header = "RX frequency, Hz";
+#endif
         min = PCSG_FREQUENCY_MIN_HZ;
         max = PCSG_FREQUENCY_MAX_HZ;
         break;
@@ -93,6 +112,7 @@ void pocsag_pager_scene_capcode_input_on_enter(void* context) {
         min = PCSG_FREQ_CORRECTION_MIN_HZ;
         max = PCSG_FREQ_CORRECTION_MAX_HZ;
         break;
+#ifndef PCSG_TX_APP
     case PCSGNumberFieldCapcodeMax:
         header = "Capcode max";
         break;
@@ -115,6 +135,7 @@ void pocsag_pager_scene_capcode_input_on_enter(void* context) {
     default:
         header = range ? "Capcode min" : "Capcode";
         break;
+#endif
     }
 
     number_input_set_header_text(app->number_input, header);
