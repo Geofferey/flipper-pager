@@ -164,6 +164,18 @@ typedef enum {
     PCSGHudHourCount,
 } PCSGHudHour;
 
+/*
+ * What becomes of the HUD when the channel changes. A new channel is usually
+ * a different network, whose zone, date and system words say nothing about the
+ * one just left - but they are often the same operator, and seeing a reading
+ * survive a hop is worth having.
+ */
+typedef enum {
+    PCSGHudFreqDiscard,
+    PCSGHudFreqKeep,
+    PCSGHudFreqCount,
+} PCSGHudFreqSwitch;
+
 /** What the receiver's status bar line carries. */
 typedef enum {
     PCSGHudTickerRotate,
@@ -245,6 +257,8 @@ typedef struct {
     PCSGHudSource hud_minute;
     /** Whole hours added to the displayed clock, for a network that is out. */
     int8_t hud_offset_hours;
+    /** Whether changing channel throws the reading away or carries it over. */
+    PCSGHudFreqSwitch hud_freq_switch;
     PCSGHudTicker hud_ticker;
     /** How long the status bar holds each item before moving on, in seconds. */
     uint8_t hud_ticker_secs;

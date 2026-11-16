@@ -197,6 +197,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"HudRoaming", 0, PCSG_FIELD(filter.hud_show_roaming), PCSGSetBool},
     {"HudFrame", 0, PCSG_FIELD(filter.hud_show_frame), PCSGSetBool},
     {"HudExtSec", 0, PCSG_FIELD(filter.hud_show_ext_sec), PCSGSetBool},
+    {"HudFreqSwitch", PCSGHudFreqCount - 1, PCSG_FIELD(filter.hud_freq_switch), PCSGSetU32},
 };
 
 static uint32_t pcsg_setting_get(const POCSAGPagerApp* app, const PCSGSetting* setting) {

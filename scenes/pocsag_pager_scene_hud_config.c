@@ -14,6 +14,7 @@ typedef enum {
     PCSGHudConfigHour,
     PCSGHudConfigMinute,
     PCSGHudConfigOffset,
+    PCSGHudConfigFreqSwitch,
     PCSGHudConfigTicker,
     PCSGHudConfigTickerSecs,
     PCSGHudConfigZone,
@@ -33,6 +34,7 @@ static const char* const hud_ticker_text[PCSGHudTickerCount] = {
     "Clock",
     "Off"};
 static const char* const hud_show_text[] = {"Hide", "Show"};
+static const char* const hud_freq_text[PCSGHudFreqCount] = {"Discard", "Keep"};
 
 #define PCSG_HUD_TICKER_SECS_COUNT \
     (PCSG_HUD_TICKER_SECS_MAX - PCSG_HUD_TICKER_SECS_MIN + 1U)
@@ -60,6 +62,11 @@ static const PCSGHudRow pcsg_hud_rows[] = {
     [PCSGHudConfigMinute] =
         {"Minute:", PCSG_HUD_FIELD(filter.hud_minute), PCSGHudSourceCount, hud_source_text},
     [PCSGHudConfigOffset] = {"Offset:", PCSG_HUD_FIELD(filter.hud_offset_hours), 0, NULL},
+    [PCSGHudConfigFreqSwitch] =
+        {"Freq switch:",
+         PCSG_HUD_FIELD(filter.hud_freq_switch),
+         PCSGHudFreqCount,
+         hud_freq_text},
     [PCSGHudConfigTicker] =
         {"Ticker:", PCSG_HUD_FIELD(filter.hud_ticker), PCSGHudTickerCount, hud_ticker_text},
     [PCSGHudConfigTickerSecs] =

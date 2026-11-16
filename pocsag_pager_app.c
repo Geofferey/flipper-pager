@@ -318,6 +318,8 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->filter.hud_hour = PCSGHudHourHybrid;
     app->filter.hud_minute = PCSGHudSourceNetwork;
     app->filter.hud_offset_hours = 0;
+    // Discard is what the app has always done on a channel change.
+    app->filter.hud_freq_switch = PCSGHudFreqDiscard;
     app->filter.hud_ticker = PCSGHudTickerRotate;
     app->filter.hud_ticker_secs = PCSG_HUD_TICKER_SECS_DEFAULT;
     app->filter.hud_show_zone = true;

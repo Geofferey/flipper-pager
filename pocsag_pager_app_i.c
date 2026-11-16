@@ -136,8 +136,18 @@ uint32_t pcsg_rx(POCSAGPagerApp* app, uint32_t frequency) {
         }
     }
 
-    // RX is stopped here: discard timing from a previous channel/session only.
-    flex_sampler_reset_frame_timing(app->txrx->flex_sampler);
+    /*
+     * RX is stopped here, so this discards timing from a previous channel or
+     * session only. A new channel is usually a different network, and its
+     * zone, date and system words say nothing about this one - but they are
+     * often the same operator, and watching a reading survive a hop is the
+     * point of keeping it, so the HUD decides.
+     */
+    if(app->filter.hud_freq_switch == PCSGHudFreqDiscard) {
+        flex_sampler_reset_frame_timing(app->txrx->flex_sampler);
+    }
+    // The sync sequence is restarted either way: it only guards against
+    // setting the RTC twice from one frame, and that frame is now behind us.
     app->time_sync_sequence = 0;
 
     if(flex4) {

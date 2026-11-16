@@ -235,7 +235,11 @@ Network screen shows. `Date`, `Hour` and `Minute` each take their value from
 the `Network` or from the Flipper (`Local`); `Hour` also offers `Hybrid`, the
 network's once a clock word has arrived and the Flipper's until then, which is
 the default. `Offset` shifts the displayed hour by up to twelve hours either
-way, for a network whose hour is simply wrong. `Ticker` sets whether the status
+way, for a network whose hour is simply wrong. `Freq switch` decides what
+becomes of the reading when the channel changes: `Discard` throws it away, as
+the app always did, and `Keep` carries it over - useful across channels of one
+operator, misleading across operators, so it is yours to pick. `Ticker` sets
+whether the status
 bar rotates between the frequency and the clock, holds one of them, or stays
 off, and `Ticker secs` how long it holds each. The rest show or hide the
 individual Network screen fields. All of it is display only: the log keeps
