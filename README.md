@@ -97,7 +97,9 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   is POCSAG-only, so whichever of the two the current protocol has no use for
   is not shown at all rather than sitting there reading `N/A`. Like
   `Review & send`, it carries a `>` at the right of its row, in the same column
-  as the arrows on the rows that step through values.
+  as the arrows on the rows that step through values, and right opens it as OK
+  does. A row that does step through values keeps right for stepping, even
+  where OK also opens something on it, so the arrow means one thing throughout.
   `Clock` picks which clock BIWs go out: `Off`, `Time`, `Date` or
   `Time+Date`. `UTC` and `DST` are the zone and the standard/daylight flag, and
   `ExtSec` the accurate-seconds trim, 0-7 in steps of 0.9375 s, left at 0

@@ -215,10 +215,25 @@ static void pocsag_pager_scene_tx_show_door(VariableItem* item) {
     variable_item_set_current_value_text(item, "");
 }
 
-// Left and right have nowhere to go on a door, so they must not step it off
-// the arrow those two values exist to draw.
-static void pocsag_pager_scene_tx_set_door(VariableItem* item) {
+/*
+ * A door carries an arrow and nothing else, so right means what the arrow
+ * looks like and opens it, the same as OK - the enter callback below sends the
+ * row's index, so sending it here is the one action arriving by two routes.
+ * The second value exists only to draw the arrow, so the index goes straight
+ * back to the first and the row never looks stepped. Left cannot reach here:
+ * the list only steps down from an index above zero.
+ *
+ * Rows that do step through values keep right for stepping, whether or not OK
+ * also opens something on them, so the arrow means one thing throughout.
+ */
+static void pocsag_pager_scene_tx_open_door(VariableItem* item, uint8_t row) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
     variable_item_set_current_value_index(item, 0);
+    view_dispatcher_send_custom_event(app->view_dispatcher, row);
+}
+
+static void pocsag_pager_scene_tx_set_review(VariableItem* item) {
+    pocsag_pager_scene_tx_open_door(item, PCSGTxConfigReview);
 }
 
 /*
@@ -246,7 +261,7 @@ static void pocsag_pager_scene_tx_show_params_or_function(POCSAGPagerApp* app) {
 static void pocsag_pager_scene_tx_set_params_or_function(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
-        pocsag_pager_scene_tx_set_door(item);
+        pocsag_pager_scene_tx_open_door(item, PCSGTxConfigParamsOrFunction);
         return;
     }
     app->tx_config.function = variable_item_get_current_value_index(item);
@@ -460,7 +475,7 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     pocsag_pager_scene_tx_show_message(app);
 
     item = variable_item_list_add(
-        app->variable_item_list, "Review & send", 1, pocsag_pager_scene_tx_set_door, app);
+        app->variable_item_list, "Review & send", 1, pocsag_pager_scene_tx_set_review, app);
     pocsag_pager_scene_tx_show_door(item);
 
     variable_item_list_set_enter_callback(
