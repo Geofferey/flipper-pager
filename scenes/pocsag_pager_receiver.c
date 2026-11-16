@@ -200,7 +200,10 @@ void pocsag_pager_scene_receiver_on_enter(void* context) {
     pcsg_view_receiver_set_item_count(app->pcsg_receiver, pcsg_history_get_item(app->txrx->history));
     if(pcsg_history_get_item(app->txrx->history)) app->txrx->rx_key_state = PCSGRxKeyStateAddKey;
     pocsag_pager_scene_receiver_update_statusbar(app);
-    app->rx_bar_tick = furi_get_tick();
+    // Armed once, not on every entry: re-arming it restarts the cycle on the
+    // frequency line, so stepping in and out of messages inside ten seconds
+    // meant the clock half never came round at all.
+    if(app->rx_bar_tick == 0U) app->rx_bar_tick = furi_get_tick();
     pocsag_pager_scene_receiver_update_clock(app);
 
     pcsg_view_receiver_set_callback(app->pcsg_receiver, pocsag_pager_scene_receiver_callback, app);

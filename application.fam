@@ -1,8 +1,18 @@
+# Two apps out of one tree. The receiver is the main one; transmitting lives in
+# its own .fap so neither carries the other's code, and they hand over by
+# queueing each other with the loader and exiting - only one is ever resident.
+#
+# "*.c" rather than fbt's default "*.c*": the glob recurses either way, but the
+# default also matches the .cpython-*.pyc files the host tests leave behind and
+# hands them to the linker as linker scripts. Entries starting with "!" exclude.
+PCSG_SOURCES = ["*.c"]
+
 App(
     appid="flipper_pager",
     name="Flipper Pager",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="pocsag_pager_app",
+    sources=PCSG_SOURCES,
     requires=["gui"],
     stack_size=4 * 1024,
     order=50,
@@ -22,4 +32,25 @@ App(
     fap_author="@xMasterX & @Shmuma",
     fap_version="2.0",
     fap_description="Receive and transmit POCSAG and FLEX pager messages on CC1101 supported frequencies.",
+)
+
+App(
+    appid="flipper_pager_tx",
+    name="Flipper Pager TX",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="pocsag_pager_app",
+    sources=PCSG_SOURCES,
+    cdefines=["PCSG_TX_APP"],
+    requires=["gui"],
+    stack_size=4 * 1024,
+    order=51,
+    fap_icon="flipper_pager_10px.png",
+    fap_category="Sub-GHz",
+    fap_icon_assets="images",
+    # The icon bundle is named after the appid, and the shared sources include
+    # flipper_pager_icons.h, so keep that name rather than forking the includes.
+    fap_icon_assets_symbol="flipper_pager",
+    fap_author="@xMasterX & @Shmuma",
+    fap_version="2.0",
+    fap_description="Transmit POCSAG and FLEX pager messages. Opened by Flipper Pager.",
 )

@@ -287,7 +287,25 @@ static uint8_t pcsg_view_receiver_draw_field(Canvas* canvas, uint8_t right, cons
  */
 static void pcsg_view_receiver_draw_statusbar(Canvas* canvas, PCSGReceiverModel* model) {
     if(model->show_time && !furi_string_empty(model->time_str)) {
-        pcsg_view_receiver_draw_field(canvas, 127, furi_string_get_cstr(model->time_str));
+        /*
+         * "UTC-8 | 17:14:50". The zone and the clock arrive as one string with
+         * a space between them, so the divider goes in here where the canvas
+         * can be asked whether the font actually has a glyph for it - a
+         * missing one would draw as a gap and look like a mistake.
+         */
+        const char* text = furi_string_get_cstr(model->time_str);
+        const char* gap = strrchr(text, ' ');
+        uint8_t right = pcsg_view_receiver_draw_field(canvas, 127, gap ? gap + 1 : text);
+        if(gap) {
+            if(canvas_glyph_width(canvas, '|')) {
+                right = pcsg_view_receiver_draw_field(canvas, right, "|");
+            }
+            char zone[12];
+            const size_t length = MIN((size_t)(gap - text), sizeof(zone) - 1U);
+            memcpy(zone, text, length);
+            zone[length] = '\0';
+            pcsg_view_receiver_draw_field(canvas, right, zone);
+        }
         return;
     }
     uint8_t right = pcsg_view_receiver_draw_field(
@@ -366,11 +384,14 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
         canvas_draw_icon(canvas, 64, 55, &I_Unlock_7x8);
         canvas_draw_str(canvas, 74, 62, "Unlocked");
         break;
+    // Right-aligned through the same helper as the frequency line, so every
+    // message in this row ends at the same edge and none of them can reach
+    // back under the Config button.
     case PCSGReceiverBarShowHoldBack:
-        canvas_draw_str(canvas, 44, 62, "Hold Back to exit");
+        pcsg_view_receiver_draw_field(canvas, 127, "Hold Back to exit");
         break;
     case PCSGReceiverBarShowLatest:
-        canvas_draw_str_aligned(canvas, 64, 62, AlignCenter, AlignBottom, "Latest message");
+        pcsg_view_receiver_draw_field(canvas, 127, "Latest message");
         break;
     case PCSGReceiverBarShowAddressFilter:
         canvas_draw_str_aligned(
