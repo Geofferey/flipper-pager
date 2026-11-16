@@ -118,20 +118,38 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
      * rather than a fallback.
      */
     if(app->filter.hud_show_date) {
-        if(app->filter.hud_date == PCSGHudSourceLocal) {
-            DateTime local;
-            furi_hal_rtc_get_datetime(&local);
-            snprintf(text, sizeof(text), "%u-%02u-%02u", local.year, local.month, local.day);
+        DateTime local;
+        furi_hal_rtc_get_datetime(&local);
+
+        // Year and day/month are chosen apart, so they are built apart: the
+        // networks seen so far get one right and the other wrong.
+        char year_text[8];
+        if(app->filter.hud_year == PCSGHudSourceLocal) {
+            snprintf(year_text, sizeof(year_text), "%u", local.year);
         } else if(info.have_date) {
             snprintf(
-                text,
-                sizeof(text),
-                "%u-%02u-%02u",
-                pocsag_pager_scene_network_info_year(info.year_field),
-                info.month,
-                info.day);
+                year_text,
+                sizeof(year_text),
+                "%u",
+                pocsag_pager_scene_network_info_year(info.year_field));
         } else {
+            strlcpy(year_text, "????", sizeof(year_text));
+        }
+
+        char day_text[8];
+        if(app->filter.hud_date == PCSGHudSourceLocal) {
+            snprintf(day_text, sizeof(day_text), "%02u-%02u", local.month, local.day);
+        } else if(info.have_date) {
+            snprintf(day_text, sizeof(day_text), "%02u-%02u", info.month, info.day);
+        } else {
+            // Escaped: "??-" would otherwise be read as the trigraph for "~".
+            strlcpy(day_text, "\?\?-\?\?", sizeof(day_text));
+        }
+
+        if(year_text[0] == '?' && day_text[0] == '?') {
             strlcpy(text, "no date", sizeof(text));
+        } else {
+            snprintf(text, sizeof(text), "%s-%s", year_text, day_text);
         }
         pocsag_pager_scene_network_info_add(
             app, PCSG_NETWORK_MID_X, PCSG_NETWORK_DATE_Y, AlignCenter, FontSecondary, text);

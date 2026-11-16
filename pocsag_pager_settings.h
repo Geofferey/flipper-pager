@@ -251,7 +251,10 @@ typedef struct {
      * a stale 2007, another today's day and month with the year field wrapped
      * to 1994. Local is there for both of them.
      */
+    /** Day and month. The year is separate: the two observed networks get day
+     *  and month right and only the year wrong, so they are chosen apart. */
     PCSGHudSource hud_date;
+    PCSGHudSource hud_year;
     /** Local, Network, or Network falling back to Local until an hour word. */
     PCSGHudHour hud_hour;
     PCSGHudSource hud_minute;

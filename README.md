@@ -231,10 +231,14 @@ a network that never sends one is told apart from one that sends it as zero.
 The saved-log list has no network behind it, so right does nothing there.
 
 **HUD options**, in Settings, decides what the clock is made of and what the
-Network screen shows. `Date`, `Hour` and `Minute` each take their value from
-the `Network` or from the Flipper (`Local`); `Hour` also offers `Hybrid`, the
-network's once a clock word has arrived and the Flipper's until then, which is
-the default. `Offset` shifts the displayed hour by up to twelve hours either
+Network screen shows. `Day/Month`, `Year`, `Hour` and `Minute` each take
+their value from the `Network` or from the Flipper (`Local`); `Hour` also
+offers `Hybrid`, the network's once a clock word has arrived and the Flipper's
+until then, which is the default. The year is chosen apart from the day and
+month because that is the part the observed networks get wrong: both send
+today's day and month, one with the year field wrapped to 1994 and the other
+with a date stale by years. `Year: Local` with `Day/Month: Network` reads the
+network's date and the Flipper's year. `Offset` shifts the displayed hour by up to twelve hours either
 way, for a network whose hour is simply wrong. `Freq switch` decides what
 becomes of the reading when the channel changes: `Discard` throws it away, as
 the app always did, and `Keep` carries it over - useful across channels of one

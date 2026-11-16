@@ -315,6 +315,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     // the hour falls back to the Flipper rather than reading "--" while it
     // waits for a clock word.
     app->filter.hud_date = PCSGHudSourceNetwork;
+    app->filter.hud_year = PCSGHudSourceNetwork;
     app->filter.hud_hour = PCSGHudHourHybrid;
     app->filter.hud_minute = PCSGHudSourceNetwork;
     app->filter.hud_offset_hours = 0;

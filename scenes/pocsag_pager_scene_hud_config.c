@@ -11,6 +11,7 @@
  */
 typedef enum {
     PCSGHudConfigDate,
+    PCSGHudConfigYear,
     PCSGHudConfigHour,
     PCSGHudConfigMinute,
     PCSGHudConfigOffset,
@@ -55,8 +56,12 @@ typedef struct {
 #define PCSG_HUD_FIELD(member) offsetof(POCSAGPagerApp, member)
 
 static const PCSGHudRow pcsg_hud_rows[] = {
+    // Day and month together; the year is its own row below, because that is
+    // the part the observed networks get wrong.
     [PCSGHudConfigDate] =
-        {"Date:", PCSG_HUD_FIELD(filter.hud_date), PCSGHudSourceCount, hud_source_text},
+        {"Day/Month:", PCSG_HUD_FIELD(filter.hud_date), PCSGHudSourceCount, hud_source_text},
+    [PCSGHudConfigYear] =
+        {"Year:", PCSG_HUD_FIELD(filter.hud_year), PCSGHudSourceCount, hud_source_text},
     [PCSGHudConfigHour] =
         {"Hour:", PCSG_HUD_FIELD(filter.hud_hour), PCSGHudHourCount, hud_hour_text},
     [PCSGHudConfigMinute] =
