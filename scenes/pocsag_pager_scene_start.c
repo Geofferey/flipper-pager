@@ -67,7 +67,12 @@ bool pocsag_pager_scene_start_on_event(void* context, SceneManagerEvent event) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneReceiver);
             consumed = true;
         } else if(event.event == SubmenuIndexPOCSAGPagerTransmit) {
-            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxConfig);
+            // Transmitting is its own app: hand over and leave, so this one's
+            // decoder and history are not sitting in memory behind it. If it is
+            // not installed, stay here rather than exiting into nothing.
+            if(!pcsg_app_handover(app, PCSG_APP_TX_PATH)) {
+                notification_message(app->notifications, &sequence_error);
+            }
             consumed = true;
         } else if(event.event == SubmenuIndexPOCSAGPagerSettings) {
             app->config_standalone = true;

@@ -472,6 +472,16 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
 
 bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent event) {
     POCSAGPagerApp* app = context;
+#ifdef PCSG_TX_APP
+    /*
+     * This is the transmit app's first scene, so Back would drop the user at
+     * the launcher. Hand back to the receiver instead, which is where they came
+     * from. If it is not installed, fall through and exit as normal.
+     */
+    if(event.type == SceneManagerEventTypeBack && pcsg_app_handover(app, PCSG_APP_RX_PATH)) {
+        return true;
+    }
+#endif
     if(event.type != SceneManagerEventTypeCustom) return false;
 
     if(event.event == PCSGTxConfigFrequency) {

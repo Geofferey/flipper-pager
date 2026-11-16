@@ -2,6 +2,7 @@
 
 #define TAG "POCSAGPager"
 #include <flipper_format/flipper_format_i.h>
+#include <loader/loader.h>
 
 static bool pcsg_preset_has_mode_prefix(const char* preset_name, const char* prefix) {
     const size_t prefix_length = strlen(prefix);
@@ -67,6 +68,9 @@ void pcsg_begin(POCSAGPagerApp* app, uint8_t* preset_data) {
     app->txrx->txrx_state = PCSGTxRxStateIDLE;
 }
 
+// Receiving is the receiver app's: the transmit build has no sampler, no
+// decoder and no history for any of this to drive.
+#ifndef PCSG_TX_APP
 uint32_t pcsg_rx(POCSAGPagerApp* app, uint32_t frequency) {
     furi_assert(app);
     if(!subghz_devices_is_frequency_valid(app->txrx->radio_device, frequency)) {
@@ -183,6 +187,22 @@ void pcsg_rx_end(POCSAGPagerApp* app) {
     subghz_devices_idle(app->txrx->radio_device);
     app->txrx->txrx_state = PCSGTxRxStateIDLE;
 }
+#endif // !PCSG_TX_APP
+
+bool pcsg_app_handover(POCSAGPagerApp* app, const char* path) {
+    furi_assert(app);
+    Storage* storage = furi_record_open(RECORD_STORAGE);
+    const bool present = storage_file_exists(storage, path);
+    furi_record_close(RECORD_STORAGE);
+    if(!present) return false;
+
+    Loader* loader = furi_record_open(RECORD_LOADER);
+    loader_enqueue_launch(loader, path, NULL, LoaderDeferredLaunchFlagNone);
+    furi_record_close(RECORD_LOADER);
+    // Queued, not started: it runs once this app has exited.
+    view_dispatcher_stop(app->view_dispatcher);
+    return true;
+}
 
 void pcsg_sleep(POCSAGPagerApp* app) {
     furi_assert(app);
@@ -190,6 +210,8 @@ void pcsg_sleep(POCSAGPagerApp* app) {
     app->txrx->txrx_state = PCSGTxRxStateSleep;
 }
 
+// And transmitting is the transmit app's, encoders and all.
+#ifdef PCSG_TX_APP
 static void pcsg_tx_release_encoder(POCSAGPagerApp* app) {
     pocsag_tx_encoder_free(app->tx_encoder);
     flex_tx_encoder_free(app->flex_tx_encoder);
@@ -199,7 +221,7 @@ static void pcsg_tx_release_encoder(POCSAGPagerApp* app) {
 
 PCSGTxStartStatus pcsg_tx_start(POCSAGPagerApp* app) {
     furi_assert(app);
-    if(app->txrx->txrx_state == PCSGTxRxStateRx) pcsg_rx_end(app);
+    // This app never receives, so there is no receive session to end first.
     if(app->txrx->txrx_state == PCSGTxRxStateTx) pcsg_tx_stop(app);
     if(app->txrx->txrx_state == PCSGTxRxStateSleep) return PCSGTxStartInvalid;
 
@@ -310,3 +332,4 @@ void pcsg_tx_stop(POCSAGPagerApp* app) {
     pcsg_tx_release_encoder(app);
     app->txrx->txrx_state = PCSGTxRxStateIDLE;
 }
+#endif // PCSG_TX_APP

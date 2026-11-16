@@ -123,6 +123,17 @@ void pcsg_get_frequency_modulation(
     FuriString* frequency,
     FuriString* modulation);
 bool pcsg_preset_is_flex4(const char* preset_name);
+/*
+ * Receiving and transmitting are two apps, and they hand over by queueing each
+ * other with the loader and then exiting: the loader starts the queued one once
+ * we are gone, so only one is ever resident. False if the other .fap is not
+ * installed, in which case nothing is queued and the caller should stay put -
+ * exiting anyway would leave the user with neither.
+ */
+#define PCSG_APP_RX_PATH "/ext/apps/Sub-GHz/flipper_pager.fap"
+#define PCSG_APP_TX_PATH "/ext/apps/Sub-GHz/flipper_pager_tx.fap"
+bool pcsg_app_handover(POCSAGPagerApp* app, const char* path);
+
 void pcsg_time_sync(POCSAGPagerApp* app);
 
 /** The FLEX network's own clock: its time of day, and the offset its zone code

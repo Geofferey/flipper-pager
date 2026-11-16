@@ -23,7 +23,9 @@ static bool pocsag_pager_app_back_event_callback(void* context) {
 static void pocsag_pager_app_tick_event_callback(void* context) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
+#ifndef PCSG_TX_APP
     pcsg_classic_alert_tick(app);
+#endif
     scene_manager_handle_tick_event(app->scene_manager);
 }
 
@@ -142,6 +144,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
         POCSAGPagerViewTextInput,
         text_input_get_view(app->text_input));
 
+#ifndef PCSG_TX_APP
     // Receiver
     app->pcsg_receiver = pcsg_view_receiver_alloc();
     view_dispatcher_add_view(
@@ -155,6 +158,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
         app->view_dispatcher,
         POCSAGPagerViewReceiverInfo,
         pcsg_view_receiver_info_get_view(app->pcsg_receiver_info));
+#endif
 
     //init setting
     app->setting = subghz_setting_alloc();
@@ -294,6 +298,13 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->filter.frequency_correction_hz = 0;
     pcsg_settings_load(app);
 
+    /*
+     * The decoder and everything feeding it - the history, the worker, the
+     * protocol registry, the sampler - is the receiver's. Leaving it out of the
+     * transmit build is most of why that app is the smaller one, since the
+     * registry is what drags in protocols/ at all.
+     */
+#ifndef PCSG_TX_APP
     app->txrx->history = pcsg_history_alloc();
     app->txrx->worker = subghz_worker_alloc();
     app->txrx->environment = subghz_environment_alloc();
@@ -316,6 +327,10 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     subghz_worker_set_context(app->txrx->worker, app->txrx->receiver);
 
     scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneStart);
+#else
+    // No menu to open on: transmitting is the whole app.
+    scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxConfig);
+#endif
 
     return app;
 }
@@ -326,15 +341,21 @@ void pocsag_pager_app_free(POCSAGPagerApp* app) {
     // Save both receiver and transmitter configuration on every clean exit.
     pcsg_settings_save(app);
 
-    // Radio Devices sleep & off
-    if(app->txrx->txrx_state == PCSGTxRxStateRx) pcsg_rx_end(app);
+    // Radio Devices sleep & off. Each build can only have left the radio in
+    // the state its own half puts it in.
+#ifdef PCSG_TX_APP
     if(app->txrx->txrx_state == PCSGTxRxStateTx) pcsg_tx_stop(app);
+#else
+    if(app->txrx->txrx_state == PCSGTxRxStateRx) pcsg_rx_end(app);
+#endif
     if(app->txrx->txrx_state != PCSGTxRxStateSleep) pcsg_sleep(app);
     radio_device_loader_end(app->txrx->radio_device);
 
     subghz_devices_deinit();
 
+#ifndef PCSG_TX_APP
     pcsg_classic_alert_free(app);
+#endif
 
     // Submenu
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewSubmenu);
@@ -356,6 +377,7 @@ void pocsag_pager_app_free(POCSAGPagerApp* app) {
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewTextInput);
     text_input_free(app->text_input);
 
+#ifndef PCSG_TX_APP
     // Receiver
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewReceiver);
     pcsg_view_receiver_free(app->pcsg_receiver);
@@ -363,10 +385,12 @@ void pocsag_pager_app_free(POCSAGPagerApp* app) {
     // Receiver Info
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewReceiverInfo);
     pcsg_view_receiver_info_free(app->pcsg_receiver_info);
+#endif
 
     //setting
     subghz_setting_free(app->setting);
 
+#ifndef PCSG_TX_APP
     //Worker & Protocol & History
     flex_sampler_free(app->txrx->flex_sampler);
     subghz_receiver_free(app->txrx->receiver);
@@ -375,8 +399,11 @@ void pocsag_pager_app_free(POCSAGPagerApp* app) {
     if(app->log) pcsg_log_free(app->log);
     if(app->log_path) furi_string_free(app->log_path);
     subghz_worker_free(app->txrx->worker);
+#endif
+#ifdef PCSG_TX_APP
     pocsag_tx_encoder_free(app->tx_encoder);
     flex_tx_encoder_free(app->flex_tx_encoder);
+#endif
     furi_string_free(app->txrx->preset->name);
     free(app->txrx->preset);
     free(app->txrx);

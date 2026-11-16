@@ -7,12 +7,47 @@
 # hands them to the linker as linker scripts. Entries starting with "!" exclude.
 PCSG_SOURCES = ["*.c"]
 
+# Each app drops the other half. The receiver loses the encoders and the four
+# transmit scenes; transmitting loses the decoder, the protocol registry that
+# pulls it in, the sampler, the history and log, and the receiver's views and
+# scenes. What is left in both is the shell: app, settings, scene manager,
+# radio setup and the shared input scenes.
+PCSG_RX_ONLY = [
+    "!flex_tx.c",
+    "!pocsag_tx.c",
+    "!pocsag_pager_scene_tx_config.c",
+    "!pocsag_pager_scene_tx_confirm.c",
+    "!pocsag_pager_scene_tx_ric_input.c",
+    "!pocsag_pager_scene_tx_message_input.c",
+]
+PCSG_TX_ONLY = [
+    "!flex.c",
+    "!flex_bch.c",
+    "!pcsg_generic.c",
+    "!pocsag.c",
+    "!protocol_items.c",
+    "!flex_sampler.c",
+    "!pocsag_pager_history.c",
+    "!pocsag_pager_log.c",
+    "!pocsag_pager_alert.c",
+    "!pocsag_pager_led.c",
+    # Matches the scene and the view of the same name, which is what we want.
+    "!pocsag_pager_receiver.c",
+    "!pocsag_pager_receiver_info.c",
+    "!pocsag_pager_scene_receiver_config.c",
+    "!pocsag_pager_scene_receiver_info.c",
+    "!pocsag_pager_scene_review.c",
+    "!pocsag_pager_scene_review_info.c",
+    "!pocsag_pager_scene_start.c",
+    "!pocsag_pager_scene_about.c",
+]
+
 App(
     appid="flipper_pager",
     name="Flipper Pager",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="pocsag_pager_app",
-    sources=PCSG_SOURCES,
+    sources=PCSG_SOURCES + PCSG_RX_ONLY,
     requires=["gui"],
     stack_size=4 * 1024,
     order=50,
@@ -39,7 +74,7 @@ App(
     name="Flipper Pager TX",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="pocsag_pager_app",
-    sources=PCSG_SOURCES,
+    sources=PCSG_SOURCES + PCSG_TX_ONLY,
     cdefines=["PCSG_TX_APP"],
     requires=["gui"],
     stack_size=4 * 1024,
