@@ -311,6 +311,22 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     // beacon. A set value overrides both.
     app->tx_config.ers_cycles = 0;
     app->filter.frequency_correction_hz = 0;
+    // The network's clock is what the HUD is for, so that is where it starts;
+    // the hour falls back to the Flipper rather than reading "--" while it
+    // waits for a clock word.
+    app->filter.hud_date = PCSGHudSourceNetwork;
+    app->filter.hud_hour = PCSGHudHourHybrid;
+    app->filter.hud_minute = PCSGHudSourceNetwork;
+    app->filter.hud_offset_hours = 0;
+    app->filter.hud_ticker = PCSGHudTickerRotate;
+    app->filter.hud_ticker_secs = PCSG_HUD_TICKER_SECS_DEFAULT;
+    app->filter.hud_show_zone = true;
+    app->filter.hud_show_date = true;
+    app->filter.hud_show_ssid1 = true;
+    app->filter.hud_show_ssid2 = true;
+    app->filter.hud_show_roaming = true;
+    app->filter.hud_show_frame = true;
+    app->filter.hud_show_ext_sec = true;
     pcsg_settings_load(app);
 
     /*

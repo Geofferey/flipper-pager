@@ -129,6 +129,28 @@ bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
     out->second = sec % 60U;
     out->have_hour = timing.have_hour;
     out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes);
+
+    /*
+     * The HUD settings decide where each part actually comes from. The
+     * network's clock is the point of this, but two observed networks are
+     * wrong about it, so the Flipper's own can stand in for any part.
+     */
+    DateTime local;
+    furi_hal_rtc_get_datetime(&local);
+    if(app->filter.hud_minute == PCSGHudSourceLocal) {
+        out->minute = local.minute;
+        out->second = local.second;
+    }
+    const bool local_hour = app->filter.hud_hour == PCSGHudHourLocal ||
+                            (app->filter.hud_hour == PCSGHudHourHybrid && !out->have_hour);
+    if(local_hour) {
+        out->hour = local.hour;
+        // Taken from the Flipper, so it is known, whatever the network sent.
+        out->have_hour = true;
+    }
+    if(out->have_hour && app->filter.hud_offset_hours != 0) {
+        out->hour = (uint8_t)(((int16_t)out->hour + app->filter.hud_offset_hours + 24) % 24);
+    }
     return true;
 }
 

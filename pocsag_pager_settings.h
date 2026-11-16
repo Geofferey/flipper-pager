@@ -144,6 +144,44 @@ typedef enum {
     PCSGToneSpreadCount,
 } PCSGToneSpread;
 
+/*
+ * Where a field of the displayed clock is taken from. The network's own clock
+ * is the point of the thing, but a network can be wrong - and two observed
+ * ones are - so each part can be taken from the Flipper instead.
+ */
+typedef enum {
+    PCSGHudSourceNetwork,
+    PCSGHudSourceLocal,
+    PCSGHudSourceCount,
+} PCSGHudSource;
+
+/** The hour additionally offers falling back rather than choosing outright. */
+typedef enum {
+    PCSGHudHourNetwork,
+    PCSGHudHourLocal,
+    /** The network's once a clock word arrives, the Flipper's until then. */
+    PCSGHudHourHybrid,
+    PCSGHudHourCount,
+} PCSGHudHour;
+
+/** What the receiver's status bar line carries. */
+typedef enum {
+    PCSGHudTickerRotate,
+    PCSGHudTickerFrequency,
+    PCSGHudTickerClock,
+    PCSGHudTickerOff,
+    PCSGHudTickerCount,
+} PCSGHudTicker;
+
+/** Whole hours, either way, that the HUD clock can be shifted by. */
+#define PCSG_HUD_OFFSET_MAX   12
+#define PCSG_HUD_OFFSET_COUNT (PCSG_HUD_OFFSET_MAX * 2 + 1)
+
+/** Seconds the status bar holds an item. Two is as fast as it reads. */
+#define PCSG_HUD_TICKER_SECS_MIN     2U
+#define PCSG_HUD_TICKER_SECS_MAX     60U
+#define PCSG_HUD_TICKER_SECS_DEFAULT 10U
+
 typedef struct {
     // Independent visibility per FLEX page kind. POCSAG is not filtered by
     // kind: it has only the RIC filter.
@@ -191,6 +229,32 @@ typedef struct {
     // FLEX4 soft-decision (Chase) recovery of weak words; off by default, and
     // allocates nothing in the decoder unless enabled.
     bool weak_decode;
+    /*
+     * HUD: where each part of the displayed clock comes from, and what the
+     * Network info screen shows. Display only - the log keeps timestamping
+     * from the Flipper's own clock whatever is set here, so changing one of
+     * these can never rewrite what has already been written down.
+     *
+     * Two networks have been observed sending a date that is not today's: one
+     * a stale 2007, another today's day and month with the year field wrapped
+     * to 1994. Local is there for both of them.
+     */
+    PCSGHudSource hud_date;
+    /** Local, Network, or Network falling back to Local until an hour word. */
+    PCSGHudHour hud_hour;
+    PCSGHudSource hud_minute;
+    /** Whole hours added to the displayed clock, for a network that is out. */
+    int8_t hud_offset_hours;
+    PCSGHudTicker hud_ticker;
+    /** How long the status bar holds each item before moving on, in seconds. */
+    uint8_t hud_ticker_secs;
+    bool hud_show_zone;
+    bool hud_show_date;
+    bool hud_show_ssid1;
+    bool hud_show_ssid2;
+    bool hud_show_roaming;
+    bool hud_show_frame;
+    bool hud_show_ext_sec;
 } PCSGFilterSettings;
 
 /*

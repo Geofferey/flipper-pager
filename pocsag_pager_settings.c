@@ -87,6 +87,8 @@ typedef enum {
     PCSGSetBoolInv,
     /** Signed, bounded symmetrically by +/- limit. */
     PCSGSetI32,
+    /** Signed and one byte wide, so it cannot share PCSGSetI32's int32_t cast. */
+    PCSGSetI8,
     /** Validated against the radio device before it is accepted. */
     PCSGSetFreq,
     /** One of the three POCSAG rates. */
@@ -181,6 +183,20 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxRoaming", 0, PCSG_FIELD(tx_config.roaming), PCSGSetBool},
     {"TxMsgNumber", PCSG_TX_MSG_NUMBER_AUTO, PCSG_FIELD(tx_config.msg_number), PCSGSetU32},
     {"TxErsCycles", PCSG_TX_ERS_CYCLES_MAX, PCSG_FIELD(tx_config.ers_cycles), PCSGSetU32},
+    {"HudDate", PCSGHudSourceCount - 1, PCSG_FIELD(filter.hud_date), PCSGSetU32},
+    {"HudHour", PCSGHudHourCount - 1, PCSG_FIELD(filter.hud_hour), PCSGSetU32},
+    {"HudMinute", PCSGHudSourceCount - 1, PCSG_FIELD(filter.hud_minute), PCSGSetU32},
+    // Signed, so it rides the same path the frequency correction does.
+    {"HudOffsetHours", PCSG_HUD_OFFSET_MAX, PCSG_FIELD(filter.hud_offset_hours), PCSGSetI8},
+    {"HudTicker", PCSGHudTickerCount - 1, PCSG_FIELD(filter.hud_ticker), PCSGSetU32},
+    {"HudTickerSecs", PCSG_HUD_TICKER_SECS_MAX, PCSG_FIELD(filter.hud_ticker_secs), PCSGSetU32},
+    {"HudZone", 0, PCSG_FIELD(filter.hud_show_zone), PCSGSetBool},
+    {"HudShowDate", 0, PCSG_FIELD(filter.hud_show_date), PCSGSetBool},
+    {"HudSsid1", 0, PCSG_FIELD(filter.hud_show_ssid1), PCSGSetBool},
+    {"HudSsid2", 0, PCSG_FIELD(filter.hud_show_ssid2), PCSGSetBool},
+    {"HudRoaming", 0, PCSG_FIELD(filter.hud_show_roaming), PCSGSetBool},
+    {"HudFrame", 0, PCSG_FIELD(filter.hud_show_frame), PCSGSetBool},
+    {"HudExtSec", 0, PCSG_FIELD(filter.hud_show_ext_sec), PCSGSetBool},
 };
 
 static uint32_t pcsg_setting_get(const POCSAGPagerApp* app, const PCSGSetting* setting) {
@@ -248,6 +264,17 @@ void pcsg_settings_load(POCSAGPagerApp* app) {
                     continue;
                 }
                 *pcsg_setting_signed(app, setting) = signed_value;
+                continue;
+            }
+
+            if(setting->kind == PCSGSetI8) {
+                int32_t signed_value;
+                if(!flipper_format_read_int32(file, setting->key, &signed_value, 1)) continue;
+                if(signed_value < -(int32_t)setting->limit ||
+                   signed_value > (int32_t)setting->limit) {
+                    continue;
+                }
+                *(int8_t*)((uint8_t*)app + setting->offset) = (int8_t)signed_value;
                 continue;
             }
 
@@ -320,6 +347,12 @@ void pcsg_settings_save(POCSAGPagerApp* app) {
             if(setting->kind == PCSGSetI32 || setting->kind == PCSGSetStep) {
                 written = flipper_format_write_int32(
                     file, setting->key, pcsg_setting_signed(app, setting), 1);
+                continue;
+            }
+
+            if(setting->kind == PCSGSetI8) {
+                int32_t signed_value = *(const int8_t*)((const uint8_t*)app + setting->offset);
+                written = flipper_format_write_int32(file, setting->key, &signed_value, 1);
                 continue;
             }
 

@@ -34,6 +34,7 @@ enum PCSGSettingIndex {
     PCSGSettingIndexRawCapture,
     PCSGSettingIndexStatsLog,
     PCSGSettingIndexWeakDecode,
+    PCSGSettingIndexHud,
     PCSGSettingIndexLock,
 };
 
@@ -484,6 +485,13 @@ static void pcsg_config_row_changed(VariableItem* item) {
     }
 }
 
+static void pocsag_pager_scene_receiver_config_hud_changed(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    // Nothing to step through: the second value is only there for the arrow.
+    variable_item_set_current_value_index(item, 0);
+    view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingHud);
+}
+
 static void pcsg_config_row_add(POCSAGPagerApp* app, uint8_t index) {
     const PCSGConfigRow* row = &pcsg_config_rows[index];
     VariableItem* item = variable_item_list_add(
@@ -499,6 +507,8 @@ static void
     POCSAGPagerApp* app = context;
     if(index == PCSGSettingIndexLock) {
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingLock);
+    } else if(index == PCSGSettingIndexHud) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingHud);
     } else if(index == PCSGSettingIndexFrequency) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, PCSGCustomEventSceneSettingFrequency);
@@ -617,6 +627,20 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     pcsg_config_row_add(app, PCSGSettingIndexStatsLog);
     pcsg_config_row_add(app, PCSGSettingIndexWeakDecode);
 
+    /*
+     * A door, as the transmitter's FLEX params row is: two values so the list
+     * draws its own arrow at the right edge rather than a ">" written as value
+     * text landing mid column, and right opens it as OK does.
+     */
+    item = variable_item_list_add(
+        app->variable_item_list,
+        "HUD options",
+        2,
+        pocsag_pager_scene_receiver_config_hud_changed,
+        app);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, "");
+
     // Locking the keyboard only makes sense while receiving.
     uint8_t selected = app->config_selected_index;
     if(app->config_standalone) {
@@ -639,6 +663,9 @@ bool pocsag_pager_scene_receiver_config_on_event(void* context, SceneManagerEven
         if(event.event == PCSGCustomEventSceneSettingLock) {
             app->lock = PCSGLockOn;
             scene_manager_previous_scene(app->scene_manager);
+            consumed = true;
+        } else if(event.event == PCSGCustomEventSceneSettingHud) {
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneHudConfig);
             consumed = true;
         } else if(event.event == PCSGCustomEventSceneSettingFreqCorr) {
             scene_manager_set_scene_state(

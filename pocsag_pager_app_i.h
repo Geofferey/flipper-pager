@@ -88,6 +88,7 @@ struct POCSAGPagerApp {
     PocsagTxConfig tx_config;
     uint8_t tx_config_selected_index;
     uint8_t tx_params_selected_index;
+    uint8_t hud_config_selected_index;
     // Which phase entry the capcode row is showing, as an index into
     // the phases the current mode carries.
     uint8_t tx_ric_slot;

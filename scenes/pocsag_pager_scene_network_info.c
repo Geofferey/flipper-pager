@@ -61,16 +61,18 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
     char text[24];
 
     // Zone on the left of the top row, the offset the clock is actually on.
-    if(have_clock && now.have_zone) {
-        pcsg_zone_format(now.zone_minutes, text, sizeof(text));
-    } else {
-        strlcpy(text, "No zone", sizeof(text));
+    if(app->filter.hud_show_zone) {
+        if(have_clock && now.have_zone) {
+            pcsg_zone_format(now.zone_minutes, text, sizeof(text));
+        } else {
+            strlcpy(text, "No zone", sizeof(text));
+        }
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_TOP_Y, AlignLeft, FontSecondary, text);
     }
-    pocsag_pager_scene_network_info_add(
-        app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_TOP_Y, AlignLeft, FontSecondary, text);
 
     // Roaming on the right of it: a word about the network, not about the time.
-    if(info.have_roaming) {
+    if(info.have_roaming && app->filter.hud_show_roaming) {
         pocsag_pager_scene_network_info_add(
             app,
             PCSG_NETWORK_RIGHT_X,
@@ -109,55 +111,75 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
             "the network");
     }
 
-    if(info.have_date) {
-        snprintf(
-            text,
-            sizeof(text),
-            "%u-%02u-%02u",
-            pocsag_pager_scene_network_info_year(info.year_field),
-            info.month,
-            info.day);
-    } else {
-        strlcpy(text, "no date", sizeof(text));
+    /*
+     * Date: the network's, or the Flipper's. Two observed networks send one
+     * that is not today's - a stale 2007 on one, today's day and month with
+     * the year field wrapped to 1994 on another - so Local is a real choice
+     * rather than a fallback.
+     */
+    if(app->filter.hud_show_date) {
+        if(app->filter.hud_date == PCSGHudSourceLocal) {
+            DateTime local;
+            furi_hal_rtc_get_datetime(&local);
+            snprintf(text, sizeof(text), "%u-%02u-%02u", local.year, local.month, local.day);
+        } else if(info.have_date) {
+            snprintf(
+                text,
+                sizeof(text),
+                "%u-%02u-%02u",
+                pocsag_pager_scene_network_info_year(info.year_field),
+                info.month,
+                info.day);
+        } else {
+            strlcpy(text, "no date", sizeof(text));
+        }
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_MID_X, PCSG_NETWORK_DATE_Y, AlignCenter, FontSecondary, text);
     }
-    pocsag_pager_scene_network_info_add(
-        app, PCSG_NETWORK_MID_X, PCSG_NETWORK_DATE_Y, AlignCenter, FontSecondary, text);
 
     // Who is transmitting: SSID1 on the left, SSID2 on the right.
-    if(info.have_ssid1) {
-        snprintf(text, sizeof(text), "LID %u/%u", info.local_id, info.coverage_zone);
-    } else {
-        strlcpy(text, "LID -", sizeof(text));
+    if(app->filter.hud_show_ssid1) {
+        if(info.have_ssid1) {
+            snprintf(text, sizeof(text), "LID %u/%u", info.local_id, info.coverage_zone);
+        } else {
+            strlcpy(text, "LID -", sizeof(text));
+        }
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW1_Y, AlignLeft, FontSecondary, text);
     }
-    pocsag_pager_scene_network_info_add(
-        app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW1_Y, AlignLeft, FontSecondary, text);
 
-    if(info.have_ssid2) {
-        snprintf(text, sizeof(text), "CC %u", info.country_code);
-    } else {
-        strlcpy(text, "CC -", sizeof(text));
+    if(app->filter.hud_show_ssid2) {
+        if(info.have_ssid2) {
+            snprintf(text, sizeof(text), "CC %u", info.country_code);
+        } else {
+            strlcpy(text, "CC -", sizeof(text));
+        }
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_RIGHT_X, PCSG_NETWORK_ROW1_Y, AlignRight, FontSecondary, text);
     }
-    pocsag_pager_scene_network_info_add(
-        app, PCSG_NETWORK_RIGHT_X, PCSG_NETWORK_ROW1_Y, AlignRight, FontSecondary, text);
 
     // Where the frame grid is, and the seconds trim riding with the zone.
-    FlexFrameTiming timing;
-    if(app->txrx->flex_sampler &&
-       flex_sampler_get_frame_timing(app->txrx->flex_sampler, &timing)) {
-        snprintf(text, sizeof(text), "F%u/C%u", timing.frame, timing.cycle);
-    } else {
-        strlcpy(text, "F-/C-", sizeof(text));
+    if(app->filter.hud_show_frame) {
+        FlexFrameTiming timing;
+        if(app->txrx->flex_sampler &&
+           flex_sampler_get_frame_timing(app->txrx->flex_sampler, &timing)) {
+            snprintf(text, sizeof(text), "F%u/C%u", timing.frame, timing.cycle);
+        } else {
+            strlcpy(text, "F-/C-", sizeof(text));
+        }
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW2_Y, AlignLeft, FontSecondary, text);
     }
-    pocsag_pager_scene_network_info_add(
-        app, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW2_Y, AlignLeft, FontSecondary, text);
 
-    if(info.have_ext_sec) {
-        snprintf(text, sizeof(text), "ExtSec %u", info.ext_sec);
-    } else {
-        strlcpy(text, "ExtSec -", sizeof(text));
+    if(app->filter.hud_show_ext_sec) {
+        if(info.have_ext_sec) {
+            snprintf(text, sizeof(text), "ExtSec %u", info.ext_sec);
+        } else {
+            strlcpy(text, "ExtSec -", sizeof(text));
+        }
+        pocsag_pager_scene_network_info_add(
+            app, PCSG_NETWORK_RIGHT_X, PCSG_NETWORK_ROW2_Y, AlignRight, FontSecondary, text);
     }
-    pocsag_pager_scene_network_info_add(
-        app, PCSG_NETWORK_RIGHT_X, PCSG_NETWORK_ROW2_Y, AlignRight, FontSecondary, text);
 }
 
 void pocsag_pager_scene_network_info_on_enter(void* context) {

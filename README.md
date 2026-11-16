@@ -230,6 +230,17 @@ accurate-seconds trim. A field reads `-` until a word carrying it arrives, so
 a network that never sends one is told apart from one that sends it as zero.
 The saved-log list has no network behind it, so right does nothing there.
 
+**HUD options**, in Settings, decides what the clock is made of and what the
+Network screen shows. `Date`, `Hour` and `Minute` each take their value from
+the `Network` or from the Flipper (`Local`); `Hour` also offers `Hybrid`, the
+network's once a clock word has arrived and the Flipper's until then, which is
+the default. `Offset` shifts the displayed hour by up to twelve hours either
+way, for a network whose hour is simply wrong. `Ticker` sets whether the status
+bar rotates between the frequency and the clock, holds one of them, or stays
+off, and `Ticker secs` how long it holds each. The rest show or hide the
+individual Network screen fields. All of it is display only: the log keeps
+timestamping from the Flipper's own clock whatever is set here.
+
 A reading stays once taken. The clock keeps running from the last trusted
 frame, and the zone, date and system words hold until the network replaces
 them, rather than being dropped when nothing new arrives. A frame recovered by

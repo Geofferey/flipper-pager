@@ -13,6 +13,8 @@ typedef enum {
     PCSGCustomEventSceneSettingRicMin,
     PCSGCustomEventSceneSettingRicMax,
     PCSGCustomEventSceneSettingFreqCorr,
+    /** Settings row that opens the HUD options scene. */
+    PCSGCustomEventSceneSettingHud,
     PCSGCustomEventSceneCapcodeInputDone,
     PCSGCustomEventTxRicInputDone,
     PCSGCustomEventTxRicInputInvalid,

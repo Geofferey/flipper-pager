@@ -87,8 +87,21 @@ static void pocsag_pager_scene_receiver_update_statusbar(void* context) {
 #define PCSG_RX_CLOCK_HOLD_MS 60000U
 
 static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
-    const uint32_t period = furi_ms_to_ticks(PCSG_RX_BAR_PERIOD_MS);
-    const bool show = ((furi_get_tick() - app->rx_bar_tick) / period) % 2U != 0U;
+    // The HUD settings decide whether the line rotates at all, and how long it
+    // holds each item for. Off and Freq never reach the clock.
+    if(app->filter.hud_ticker == PCSGHudTickerOff ||
+       app->filter.hud_ticker == PCSGHudTickerFrequency) {
+        pcsg_view_receiver_set_clock(app->pcsg_receiver, NULL, false);
+        return;
+    }
+    uint8_t secs = app->filter.hud_ticker_secs;
+    if(secs < PCSG_HUD_TICKER_SECS_MIN || secs > PCSG_HUD_TICKER_SECS_MAX) {
+        secs = PCSG_HUD_TICKER_SECS_DEFAULT;
+    }
+    const uint32_t period = furi_ms_to_ticks((uint32_t)secs * 1000U);
+    // Clock means hold it there; Rotate alternates with the frequency line.
+    const bool show = app->filter.hud_ticker == PCSGHudTickerClock ||
+                      ((furi_get_tick() - app->rx_bar_tick) / period) % 2U != 0U;
     if(!show) {
         // The frequency line has the row: nothing to read, nothing to format.
         pcsg_view_receiver_set_clock(app->pcsg_receiver, NULL, false);
@@ -99,7 +112,7 @@ static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
     if(pcsg_time_network(app, &now)) {
         char text[24];
         size_t at = 0;
-        if(now.have_zone) {
+        if(now.have_zone && app->filter.hud_show_zone) {
             pcsg_zone_format(now.zone_minutes, text, sizeof(text));
             at = strlen(text);
             at += snprintf(text + at, sizeof(text) - at, " ");
