@@ -6,7 +6,10 @@ import struct
 import sys
 import zlib
 
-W, H = 123, 52
+# The full screen width, and every row above the RSSI dots the view draws at
+# y50..52 - the status bar with the Config button and the frequency follows
+# them at y53..63, so 50 rows is the whole screen this artwork can have.
+W, H = 128, 50
 ON, OFF = 0, 255
 px = [[OFF] * W for _ in range(H)]
 
@@ -83,13 +86,13 @@ def arc(cx, cy, r, a0, a1, thick=1):
 # and the screen's lower half is kept empty for it.
 
 # ---- body -------------------------------------------------------------
-rounded(0, 0, 122, 51)
-rounded(1, 1, 121, 50)
+rounded(0, 0, W - 1, H - 1)
+rounded(1, 1, W - 2, H - 2)
 
 # ---- screen, filling everything above the buttons ---------------------
 # Rounded, as the Advisor's LCD is, and double-walled so it reads as a
 # recessed display rather than a drawn box.
-SX0, SY0, SX1, SY1 = 4, 4, 118, 36
+SX0, SY0, SX1, SY1 = 5, 4, 122, 35
 rounded(SX0, SY0, SX1, SY1)
 rounded(SX0 + 1, SY0 + 1, SX1 - 1, SY1 - 1)
 # Interior left empty: the view writes "Int"/"Ext" and "Scanning..." into
@@ -97,9 +100,9 @@ rounded(SX0 + 1, SY0 + 1, SX1 - 1, SY1 - 1)
 
 # ---- buttons, a row of four along the bottom --------------------------
 for i in range(4):
-    bx = 4 + i * 29
-    rounded(bx, 40, bx + 25, 47)
-    fill(bx + 6, 43, bx + 19, 44)
+    bx = 5 + i * 30
+    rounded(bx, 39, bx + 27, 46)
+    fill(bx + 7, 42, bx + 20, 43)
 
 # ---- encode -----------------------------------------------------------
 raw = bytearray()

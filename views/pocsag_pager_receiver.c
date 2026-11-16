@@ -359,16 +359,21 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
          * which, and the artwork fills the width, so there is no room for a
          * second composition and nothing for it to say.
          */
-        canvas_draw_icon(canvas, 0, 0, &I_PagerScan_123x52);
+        /*
+         * Full width, and every row above the RSSI dots at y50..52 - the
+         * status bar follows them, so this is the whole screen the artwork
+         * can have.
+         */
+        canvas_draw_icon(canvas, 0, 0, &I_PagerScan_128x50);
         /*
          * Both strings sit inside the drawn pager's screen, which is left
          * empty for them, so they read as being on its display rather than
-         * printed over a picture of one. Its interior is x6..116, y6..34.
+         * printed over a picture of one. Its interior is x7..120, y6..33.
          */
         canvas_set_font(canvas, FontPrimary);
-        canvas_draw_str_aligned(canvas, 61, 24, AlignCenter, AlignCenter, "Scanning...");
+        canvas_draw_str_aligned(canvas, 64, 22, AlignCenter, AlignCenter, "Scanning...");
         canvas_set_font(canvas, FontSecondary);
-        canvas_draw_str(canvas, 10, 14, model->ext_module ? "Ext" : "Int");
+        canvas_draw_str(canvas, 11, 14, model->ext_module ? "Ext" : "Int");
     }
 
     // Draw RSSI
