@@ -202,10 +202,30 @@ static VariableItem* pocsag_pager_scene_tx_row(
 }
 
 /*
+ * A row that opens a scene rather than holding a setting. The list draws the
+ * ">" arrow itself, at the right edge, but only for a row with somewhere to
+ * step to, and it centres value text well short of that - so a ">" written as
+ * the value lands in the middle of the column instead of lining up with every
+ * other row's arrow. Two values with the first selected buys the real arrow;
+ * the value text stays empty, which also widens the label.
+ */
+static void pocsag_pager_scene_tx_show_door(VariableItem* item) {
+    variable_item_set_values_count(item, 2U);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, "");
+}
+
+// Left and right have nowhere to go on a door, so they must not step it off
+// the arrow those two values exist to draw.
+static void pocsag_pager_scene_tx_set_door(VariableItem* item) {
+    variable_item_set_current_value_index(item, 0);
+}
+
+/*
  * The shared row. Under FLEX it is a door to the clock words and everything
- * else FLEX-only, with one value and nothing to step through; under POCSAG it
- * is the function digit. Which one it is follows the protocol, so neither is
- * ever shown to the protocol it does not belong to.
+ * else FLEX-only; under POCSAG it is the function digit. Which one it is
+ * follows the protocol, so neither is ever shown to the protocol it does not
+ * belong to.
  */
 static void pocsag_pager_scene_tx_show_params_or_function(POCSAGPagerApp* app) {
     VariableItem* item =
@@ -213,9 +233,7 @@ static void pocsag_pager_scene_tx_show_params_or_function(POCSAGPagerApp* app) {
     if(!item) return;
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
         variable_item_set_item_label(item, "FLEX params:");
-        variable_item_set_values_count(item, 1U);
-        variable_item_set_current_value_index(item, 0);
-        variable_item_set_current_value_text(item, ">");
+        pocsag_pager_scene_tx_show_door(item);
         return;
     }
     variable_item_set_item_label(item, "Function:");
@@ -227,10 +245,11 @@ static void pocsag_pager_scene_tx_show_params_or_function(POCSAGPagerApp* app) {
 
 static void pocsag_pager_scene_tx_set_params_or_function(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
-    // The FLEX door has a single value, so left and right never reach here.
-    if(app->tx_config.protocol != PagerTxProtocolFlex) {
-        app->tx_config.function = variable_item_get_current_value_index(item);
+    if(app->tx_config.protocol == PagerTxProtocolFlex) {
+        pocsag_pager_scene_tx_set_door(item);
+        return;
     }
+    app->tx_config.function = variable_item_get_current_value_index(item);
     pocsag_pager_scene_tx_show_params_or_function(app);
 }
 
@@ -440,8 +459,9 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
         app->variable_item_list, "Message:", 1, pocsag_pager_scene_tx_set_message, app);
     pocsag_pager_scene_tx_show_message(app);
 
-    item = variable_item_list_add(app->variable_item_list, "Review & send", 1, NULL, app);
-    variable_item_set_current_value_text(item, ">");
+    item = variable_item_list_add(
+        app->variable_item_list, "Review & send", 1, pocsag_pager_scene_tx_set_door, app);
+    pocsag_pager_scene_tx_show_door(item);
 
     variable_item_list_set_enter_callback(
         app->variable_item_list, pocsag_pager_scene_tx_enter_callback, app);
