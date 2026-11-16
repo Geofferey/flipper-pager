@@ -33,20 +33,18 @@ static void pocsag_pager_scene_network_info_add(
 }
 
 /*
- * The year on the air is five bits of modulo 32 arithmetic from 1994, so the
- * field names one year in every 32. Resolve it against the Flipper's own
- * clock, which is the only thing here that knows roughly when it is.
+ * The five bit year field is an absolute index into 1994-2025, not modulo 32
+ * arithmetic rolling on into a later era: nothing on the air names an era, so
+ * a receiver cannot resolve one. A transmitter with a later year sends that
+ * year's calendar twin instead, which is what this app's transmitter does.
+ *
+ * This did resolve an era, against the Flipper's own clock, which turned a
+ * network sending 2007 into 2039. Networks really do send years that far back.
+ * The date is its own word, nothing to do with the time of day: a network can
+ * carry an accurate time and a date years out, and one does.
  */
 static uint16_t pocsag_pager_scene_network_info_year(uint8_t field) {
-    DateTime now;
-    furi_hal_rtc_get_datetime(&now);
-    const uint16_t base = 1994U + (field & 31U);
-    uint16_t best = base;
-    for(uint16_t year = base; year <= now.year + 16U; year += 32U) {
-        best = year;
-        if(year + 16U >= now.year) break;
-    }
-    return best;
+    return 1994U + (field & 31U);
 }
 
 static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {

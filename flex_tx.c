@@ -362,9 +362,36 @@ static uint32_t flex_tx_biw_ssid2(uint16_t country_code) {
     return flex_tx_encode_word(flex_tx_checksum(word));
 }
 
-// Five bits of modulo 32 arithmetic from 1994, so the field covers 1994-2025,
-// then 2026-2057, and so on. The receiver resolves which era it is in.
+/*
+ * Five bits counting from 1994, so the field names a year in 1994-2025 and
+ * nothing past it. The era is not carried anywhere, so a receiver cannot
+ * resolve one, and wrapping the count would simply name a year in that window
+ * at random - 2026 would arrive as 1994.
+ *
+ * A later year is therefore sent as its calendar twin: the year in the window
+ * with the same leap status and the same weekday for 1 January, so every date
+ * in it still lands on the day it really falls on. 2026 goes out as 2015.
+ * PortaPack Mayhem's flex_equiv_year() does the same and says so on screen.
+ */
+static bool flex_tx_year_is_leap(uint16_t year) {
+    return (year % 4U == 0U && year % 100U != 0U) || (year % 400U == 0U);
+}
+
+static uint8_t flex_tx_year_jan1_dow(uint16_t year) {
+    return (uint8_t)((year + year / 4U - year / 100U + year / 400U + 1U) % 7U);
+}
+
 static uint8_t flex_tx_year_field(uint16_t year) {
+    if(year >= 1994U && year <= 2025U) return (uint8_t)(year - 1994U);
+    const bool leap = flex_tx_year_is_leap(year);
+    const uint8_t dow = flex_tx_year_jan1_dow(year);
+    // Fourteen combinations of leap and weekday exist and a 32 year window
+    // holds every one, so the search always finds a twin.
+    for(uint16_t y = 2025U; y >= 1994U; y--) {
+        if(flex_tx_year_is_leap(y) == leap && flex_tx_year_jan1_dow(y) == dow) {
+            return (uint8_t)(y - 1994U);
+        }
+    }
     return (uint8_t)((year - 1994U) & 0x1FU);
 }
 

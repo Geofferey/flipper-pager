@@ -230,6 +230,12 @@ accurate-seconds trim. A field reads `-` until a word carrying it arrives, so
 a network that never sends one is told apart from one that sends it as zero.
 The saved-log list has no network behind it, so right does nothing there.
 
+The date is shown as the network sends it, with no attempt to resolve an era
+the format does not carry. The date is its own word and says nothing about the
+time of day: a commercial channel was observed carrying an accurate time of day
+and a 2007 date, so a date that looks wrong is the network's and not a decoding
+fault.
+
 The accurate-seconds trim is read from bits 18-20 of the system message word,
 where the decoder datasheets put it. Bit 20 is also what this app's clock
 reads as the standard/daylight flag, which the same datasheets put at bit 16,
@@ -424,9 +430,14 @@ what confirmed the reading of the two tables.
 
 Three details follow from the datasheets rather than from any implementation:
 
-- The year is **modulo 32** arithmetic from 1994, so the field covers 1994 to
-  2025, then 2026 to 2057, and a receiver resolves the era. Mayhem maps a year
-  past 2025 onto an equivalent one instead; this does not.
+- The year field is an **absolute index into 1994-2025**, not modulo 32
+  arithmetic rolling into a later era: nothing on the air names an era, so a
+  receiver cannot resolve one. A later year goes out as its calendar twin, the
+  year in that window with the same leap status and the same weekday for
+  1 January, so every date in it still lands on the right day - 2026 is sent as
+  2015. Mayhem's `flex_equiv_year()` does the same and reports the substitution
+  on screen. Confirmed on the air: a commercial channel sending year field 13
+  means 2007, and reading it as an era to resolve turned it into 2039.
 - `L` **set** means the transmitted hour is local standard time, clear means
   daylight. The zone code is always the standard-time offset, which is why the
   table has codes for -3:30 and +9:30 but none for daylight in Newfoundland or
