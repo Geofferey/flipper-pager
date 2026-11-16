@@ -124,13 +124,47 @@ typedef struct {
     uint8_t bits;
     uint8_t sync2_copies;
     uint16_t block_bytes;
+    /*
+     * Which phase supplies each successive on-air bit, and how many of them a
+     * block position consumes. The phases a mode carries and the order they go
+     * out in are the same fact, so one list covers both: 1600/2 is phase A
+     * alone, 3200/2 alternates A and C, 3200/4 pairs A and B into one symbol,
+     * and 6400/4 sends A and B then C and D. A block is 32 bytes per phase.
+     */
+    uint8_t order[4];
+    uint8_t phases;
 } FlexTxMode;
 
 static FlexTxMode flex_tx_mode(const PocsagTxConfig* config) {
-    if(config->flex_6400) return (FlexTxMode){0xDEA0U, 625U, 2U, 4U, 128U};
-    if(config->flex_4level) return (FlexTxMode){0xB068U, 1250U, 2U, 2U, 64U};
-    if(config->flex_3200) return (FlexTxMode){0x7B18U, 625U, 1U, 2U, 64U};
-    return (FlexTxMode){0x870CU, 1250U, 1U, 1U, 32U};
+    if(config->flex_6400) return (FlexTxMode){0xDEA0U, 625U, 2U, 4U, 128U, {0, 1, 2, 3}, 4U};
+    if(config->flex_4level) return (FlexTxMode){0xB068U, 1250U, 2U, 2U, 64U, {0, 1}, 2U};
+    if(config->flex_3200) return (FlexTxMode){0x7B18U, 625U, 1U, 2U, 64U, {0, 2}, 2U};
+    return (FlexTxMode){0x870CU, 1250U, 1U, 1U, 32U, {0}, 1U};
+}
+
+/*
+ * A capcode names its own phase. From the standard frame and phase embedding
+ * rule - TI's TMS320FLEX manual section 2.6.2, "bits 2 and 3 in order, specify
+ * phases 00, 01, 10, or 11 for phase 0,1,2,3 (a,b,c,d)", or equivalently
+ * Phase = (Integer(Addr/4)) Modulo 4. A single-phase pager listens only on the
+ * phase its address maps to, so a page put anywhere else never reaches it.
+ */
+static uint8_t flex_tx_capcode_phase(uint32_t capcode) {
+    return (uint8_t)((capcode >> 2) & 3U);
+}
+
+static bool flex_tx_capcode_valid(uint32_t capcode) {
+    return capcode >= FLEX_TX_SHORT_CAPCODE_MIN && capcode <= FLEX_TX_SHORT_CAPCODE_MAX;
+}
+
+uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]) {
+    const FlexTxMode mode = flex_tx_mode(config);
+    for(uint8_t i = 0; i < mode.phases; i++) order[i] = mode.order[i];
+    return mode.phases;
+}
+
+uint8_t flex_tx_capcode_slot(uint32_t capcode) {
+    return flex_tx_capcode_phase(capcode);
 }
 
 static uint16_t flex_tx_frame_bytes(const FlexTxMode* mode) {
@@ -189,6 +223,9 @@ struct FlexTxEncoder {
     uint16_t tail_index;
     FlexTxMode mode;
     uint16_t frame_bytes;
+    // Built here rather than on the stack: four phases of 88 words is 1.4 kB,
+    // and the writer needs all of them at once.
+    uint32_t phase_words[4][FLEX_TX_PHASE_WORDS];
     uint8_t half_us_remainder;
     bool inverted;
     bool lead_in_pending;
@@ -452,49 +489,41 @@ static void flex_tx_write_interleaved(uint8_t** output, const uint32_t words[8])
 }
 
 /*
- * 6400/4 runs four phases at 3200 symbols a second, two bits to a symbol: the
- * even symbol carries A and B, the odd one C and D. The page rides in A and
- * the other three are idle, so each bit of the interleaved block becomes four
- * bits on air - the data bit, then three idle ones.
- */
-static void flex_tx_write_quad(uint8_t** output, const uint32_t words[8]) {
-    uint8_t block[32];
-    uint8_t* cursor = block;
-    flex_tx_write_interleaved(&cursor, words);
-    for(uint8_t i = 0; i < sizeof(block); i++) {
-        uint32_t quad = 0;
-        for(uint8_t bit = 0; bit < 8U; bit++) {
-            const uint32_t a = (block[i] >> (7U - bit)) & 1U;
-            const uint32_t idle = (bit & 1U) ? 0U : 1U;
-            // (A,B) then (C,D), so the data bit and three copies of idle.
-            quad = (quad << 4) | (a << 3) | (idle << 2) | (idle << 1) | idle;
-        }
-        for(int8_t shift = 24; shift >= 0; shift -= 8) {
-            *(*output)++ = (uint8_t)(quad >> shift);
-        }
-    }
-}
-
-/*
- * At 3200/2-level the frame carries phases A and C, one bit of each in turn.
- * The page rides in A; C is left idle, and idle through the block interleaver
- * is the alternating pattern, so its bit is simply the bit position's parity.
+ * One block of every mode. Each phase the mode carries is interleaved on its
+ * own, then their bits go out in the mode's order, one phase's bit after
+ * another for each position in the block. That is all the difference between
+ * the modes: phase A alone gives 32 bytes, A and C or A and B give 64, and all
+ * four give 128, which is what block_bytes says.
  *
- * 3200/4 reuses this untouched: it pairs the same data bit with the same idle
- * bit, and a four-level symbol wants exactly that as its bit_a and bit_b.
+ * Replaces a writer per mode. They only ever differed in which phases they
+ * emitted and in what order, and the ones with spare phases filled them with
+ * the interleaver's idle pattern - which this does too, by being handed phases
+ * that carry nothing but their own block information word.
  */
-static void flex_tx_write_woven(uint8_t** output, const uint32_t words[8]) {
-    uint8_t block[32];
-    uint8_t* cursor = block;
-    flex_tx_write_interleaved(&cursor, words);
-    for(uint8_t i = 0; i < sizeof(block); i++) {
-        uint16_t woven = 0;
+static void flex_tx_write_block(
+    uint8_t** output,
+    const uint32_t phase_words[4][FLEX_TX_PHASE_WORDS],
+    uint8_t block,
+    const FlexTxMode* mode) {
+    uint8_t woven[4][32];
+    for(uint8_t p = 0; p < mode->phases; p++) {
+        uint8_t* cursor = woven[p];
+        flex_tx_write_interleaved(&cursor, &phase_words[mode->order[p]][block * 8U]);
+    }
+
+    uint8_t byte = 0;
+    uint8_t filled = 0;
+    for(uint8_t i = 0; i < 32U; i++) {
         for(uint8_t bit = 0; bit < 8U; bit++) {
-            const uint16_t a = (block[i] >> (7U - bit)) & 1U;
-            woven = (uint16_t)((woven << 2) | (a << 1) | ((bit & 1U) ? 0U : 1U));
+            for(uint8_t p = 0; p < mode->phases; p++) {
+                byte = (uint8_t)((byte << 1) | ((woven[p][i] >> (7U - bit)) & 1U));
+                if(++filled == 8U) {
+                    *(*output)++ = byte;
+                    byte = 0;
+                    filled = 0;
+                }
+            }
         }
-        *(*output)++ = (uint8_t)(woven >> 8);
-        *(*output)++ = (uint8_t)woven;
     }
 }
 
@@ -527,6 +556,7 @@ static void flex_tx_clock_advance(FlexTxFrameSpec* spec) {
 
 static bool flex_tx_write_frame(
     uint8_t** output,
+    FlexTxEncoder* encoder,
     const PocsagTxConfig* config,
     const FlexTxFrameSpec* spec,
     bool retrieval) {
@@ -572,10 +602,14 @@ static bool flex_tx_write_frame(
         if(message_word_count == 0U) return false;
     }
 
-    uint32_t frame_words[FLEX_TX_PHASE_WORDS];
-    for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
-        frame_words[i] = (i & 1U) ? 0x00000000U : 0xFFFFFFFFU;
+    uint32_t(*phase_words)[FLEX_TX_PHASE_WORDS] = encoder->phase_words;
+    for(uint8_t p = 0; p < 4U; p++) {
+        for(uint8_t i = 0; i < FLEX_TX_PHASE_WORDS; i++) {
+            phase_words[p][i] = (i & 1U) ? 0x00000000U : 0xFFFFFFFFU;
+        }
     }
+    // Every carried phase with a capcode set gets the page addressed to it;
+    // the rest carry sync and the clock and address nobody.
     /*
      * The clock words come first and BIW1 points the address past however many
      * of them there are. Mayhem's slot order is time, date, zone. An idle frame
@@ -599,28 +633,30 @@ static bool flex_tx_write_frame(
     }
 
     const uint8_t address_start = (uint8_t)(1U + clock_count);
-    const uint8_t vector_start = idle ? address_start : (uint8_t)(address_start + 1U);
     const uint8_t message_start = (uint8_t)(address_start + 2U);
-    frame_words[0] = flex_tx_biw1(address_start, vector_start);
-    for(uint8_t i = 0; i < clock_count; i++) frame_words[1U + i] = clock_words[i];
-    if(!idle) {
-        frame_words[address_start] = flex_tx_short_address(config->ric);
-        frame_words[vector_start] = tone_only ?
-                                        flex_tx_tone_vector() :
-                                        flex_tx_alpha_vector(message_start, message_word_count);
+    for(uint8_t p = 0; p < mode.phases; p++) {
+        const uint8_t index = mode.order[p];
+        // Every phase on the air gets its own block information word and the
+        // clock, so a pager listening on any of them finds a valid frame.
+        const bool carries = !idle && flex_tx_capcode_valid(config->ric[index]);
+        const uint8_t vector_start = carries ? (uint8_t)(address_start + 1U) : address_start;
+        phase_words[index][0] = flex_tx_biw1(address_start, vector_start);
+        for(uint8_t i = 0; i < clock_count; i++) {
+            phase_words[index][1U + i] = clock_words[i];
+        }
+        if(!carries) continue;
+        phase_words[index][address_start] = flex_tx_short_address(config->ric[index]);
+        phase_words[index][vector_start] = tone_only ?
+                                               flex_tx_tone_vector() :
+                                               flex_tx_alpha_vector(
+                                                   message_start, message_word_count);
         for(uint8_t i = 0; i < message_word_count; i++) {
-            frame_words[message_start + i] = message_words[i];
+            phase_words[index][message_start + i] = message_words[i];
         }
     }
 
     for(uint8_t block = 0; block < 11U; block++) {
-        if(mode.block_bytes == 128U) {
-            flex_tx_write_quad(output, &frame_words[block * 8U]);
-        } else if(mode.block_bytes == 64U) {
-            flex_tx_write_woven(output, &frame_words[block * 8U]);
-        } else {
-            flex_tx_write_interleaved(output, &frame_words[block * 8U]);
-        }
+        flex_tx_write_block(output, phase_words, block, &mode);
     }
     return true;
 }
@@ -641,9 +677,18 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     const size_t message_length = strnlen(config->message, sizeof(config->message));
     // An empty message is a tone-only page, not a refusal.
     if(config->protocol != PagerTxProtocolFlex ||
-       message_length > PCSG_TX_MAX_MESSAGE_LENGTH || config->ric < FLEX_TX_SHORT_CAPCODE_MIN ||
-       config->ric > FLEX_TX_SHORT_CAPCODE_MAX) {
+       message_length > PCSG_TX_MAX_MESSAGE_LENGTH) {
         return false;
+    }
+    // At least one phase this mode carries has to have somewhere to send to.
+    {
+        uint8_t order[4];
+        const uint8_t phases = flex_tx_mode_phases(config, order);
+        bool any = beacon;
+        for(uint8_t i = 0; i < phases && !any; i++) {
+            any = flex_tx_capcode_valid(config->ric[order[i]]);
+        }
+        if(!any) return false;
     }
 
     DateTime datetime;
@@ -718,7 +763,7 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         spec.continuation = !beacon && (uint8_t)(part + 1U) < frames;
         spec.text = config->message + offset;
         spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
-        if(!flex_tx_write_frame(&output, config, &spec, true)) return false;
+        if(!flex_tx_write_frame(&output, encoder, config, &spec, true)) return false;
         flex_tx_clock_advance(&spec);
     }
     // The tail is a tone, not bits, so it is emitted by the yield.

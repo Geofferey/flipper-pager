@@ -82,12 +82,35 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
     } else {
         body = app->tx_config.message[0] == '\0' ? "\e#Tone only\e#" : app->tx_config.message;
     }
+    /*
+     * Every phase this mode carries that has a capcode set, so the review says
+     * what is actually going out rather than what is stored - a capcode whose
+     * phase the mode does not carry is simply not listed.
+     */
+    char capcodes[40] = "No capcode";
+    {
+        uint8_t order[4];
+        const uint8_t phases = flex_tx_mode_phases(&app->tx_config, order);
+        size_t at = 0;
+        for(uint8_t i = 0; i < phases; i++) {
+            const uint32_t capcode = app->tx_config.ric[order[i]];
+            if(!capcode) continue;
+            at += snprintf(
+                capcodes + at,
+                sizeof(capcodes) - at,
+                at ? " %lu/%c" : "%lu/%c",
+                capcode,
+                'A' + order[i]);
+            if(at >= sizeof(capcodes) - 1U) break;
+        }
+    }
+
     FuriString* text;
     if(app->tx_config.protocol == PagerTxProtocolFlex) {
         text = furi_string_alloc_printf(
             "\e#Transmit FLEX?\e#\n"
             "%lu.%04lu MHz | %s\n"
-            "Capcode %lu | Clock %s\n"
+            "%s | Clock %s\n"
             "%s polarity | Correction %s\n\n"
             "%s\n\n"
             "Only transmit where authorized.",
@@ -97,7 +120,7 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
                 app->tx_config.flex_4level ? "3200/4FSK" :
                 app->tx_config.flex_3200   ? "3200/2FSK" :
                                             "1600/2FSK",
-            app->tx_config.ric,
+            capcodes,
             pcsg_tx_clock_text[app->tx_config.clock_biws & PCSG_TX_CLOCK_BOTH],
             app->tx_config.inverted ? "Inverted" : "Standard",
             correction,
@@ -113,7 +136,7 @@ void pocsag_pager_scene_tx_confirm_on_enter(void* context) {
             app->tx_config.frequency / 1000000U,
             (app->tx_config.frequency % 1000000U) / 100U,
             app->tx_config.baud,
-            app->tx_config.ric,
+            app->tx_config.ric[0],
             app->tx_config.function,
             app->tx_config.inverted ? "Inverted" : "Standard",
             correction,

@@ -32,6 +32,12 @@ uint8_t flex_tx_encoder_frames(const FlexTxEncoder* encoder);
  */
 bool flex_tx_four_level_supported(void);
 
+/** Phases this configuration's mode carries, in the order they go out. */
+uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]);
+
+/** The phase a capcode belongs to, which is encoded in its own address. */
+uint8_t flex_tx_capcode_slot(uint32_t capcode);
+
 /** Clocks a prepared burst out as four-level symbols on `data`, from a thread
  *  of its own because the register writes need the SPI bus. The radio must
  *  already be in transmit. */

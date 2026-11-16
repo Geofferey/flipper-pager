@@ -143,7 +143,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"StatsLog", 0, PCSG_FIELD(filter.stats_log), PCSGSetBool},
     {"WeakDecode", 0, PCSG_FIELD(filter.weak_decode), PCSGSetBool},
     {"TxFrequency", 0, PCSG_FIELD(tx_config.frequency), PCSGSetFreq},
-    {"TxRic", PCSG_TX_RIC_MAX, PCSG_FIELD(tx_config.ric), PCSGSetU32},
+    {"TxRic", PCSG_TX_RIC_MAX, PCSG_FIELD(tx_config.ric[0]), PCSGSetU32},
     {"TxFunction", 3U, PCSG_FIELD(tx_config.function), PCSGSetU32},
     {"TxBaud", 0, PCSG_FIELD(tx_config.baud), PCSGSetBaud},
     {"TxInverted", 0, PCSG_FIELD(tx_config.inverted), PCSGSetBool},
@@ -164,6 +164,9 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxClockBiws", PCSG_TX_CLOCK_BOTH, PCSG_FIELD(tx_config.clock_biws), PCSGSetU32},
     {"TxUtcCode", PCSG_TX_UTC_CODE_MAX, PCSG_FIELD(tx_config.utc_code), PCSGSetU32},
     {"TxDst", 0, PCSG_FIELD(tx_config.dst), PCSGSetBool},
+    {"TxRicB", PCSG_TX_RIC_MAX, PCSG_FIELD(tx_config.ric[1]), PCSGSetU32},
+    {"TxRicC", PCSG_TX_RIC_MAX, PCSG_FIELD(tx_config.ric[2]), PCSGSetU32},
+    {"TxRicD", PCSG_TX_RIC_MAX, PCSG_FIELD(tx_config.ric[3]), PCSGSetU32},
     {"TxFlex4Lvl", 0, PCSG_FIELD(tx_config.flex_4level), PCSGSetBool},
 };
 

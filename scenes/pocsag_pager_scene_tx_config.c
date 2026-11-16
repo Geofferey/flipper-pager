@@ -110,22 +110,60 @@ static void pocsag_pager_scene_tx_set_frequency(VariableItem* item) {
 // into it when the protocol changes and when the scene opens on it.
 static void pocsag_pager_scene_tx_clamp_address(POCSAGPagerApp* app) {
     if(app->tx_config.protocol != PagerTxProtocolFlex) return;
-    if(app->tx_config.ric < FLEX_TX_SHORT_CAPCODE_MIN) {
-        app->tx_config.ric = FLEX_TX_SHORT_CAPCODE_MIN;
-    } else if(app->tx_config.ric > FLEX_TX_SHORT_CAPCODE_MAX) {
-        app->tx_config.ric = FLEX_TX_SHORT_CAPCODE_MAX;
+    for(uint8_t i = 0; i < 4U; i++) {
+        uint32_t* capcode = &app->tx_config.ric[i];
+        // Zero means the phase sends nothing, so it is left alone.
+        if(*capcode == 0U) continue;
+        if(*capcode < FLEX_TX_SHORT_CAPCODE_MIN) *capcode = FLEX_TX_SHORT_CAPCODE_MIN;
+        if(*capcode > FLEX_TX_SHORT_CAPCODE_MAX) *capcode = FLEX_TX_SHORT_CAPCODE_MAX;
     }
 }
 
+/*
+ * FLEX gets one capcode per phase and left and right step between them, the
+ * row reading "416297/A". The letter is a readout, not a setting: a capcode
+ * carries its phase in its own address bits, so entering one files it under
+ * the phase it belongs to - putting it anywhere else would address a pager
+ * that is not listening there. An empty phase shows as "-/B" and sends
+ * nothing. Only the phases the current mode carries can be stepped to, so
+ * 1600/2 offers A alone and 6400/4 all four.
+ *
+ * POCSAG has no phases, so it keeps the single RIC it always had.
+ */
 static void pocsag_pager_scene_tx_show_address(POCSAGPagerApp* app) {
-    VariableItem* item =
-        variable_item_list_get(app->variable_item_list, PCSGTxConfigRic);
+    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxConfigRic);
     if(!item) return;
-    variable_item_set_item_label(
-        item, app->tx_config.protocol == PagerTxProtocolFlex ? "Capcode:" : "RIC:");
+    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
+    variable_item_set_item_label(item, flex ? "Capcode:" : "RIC:");
+
     char text[20];
-    snprintf(text, sizeof(text), "%lu", app->tx_config.ric);
+    if(!flex) {
+        variable_item_set_values_count(item, 1U);
+        variable_item_set_current_value_index(item, 0);
+        snprintf(text, sizeof(text), "%lu", app->tx_config.ric[0]);
+        variable_item_set_current_value_text(item, text);
+        return;
+    }
+
+    uint8_t order[4];
+    const uint8_t phases = flex_tx_mode_phases(&app->tx_config, order);
+    if(app->tx_ric_slot >= phases) app->tx_ric_slot = 0U;
+    const uint8_t phase = order[app->tx_ric_slot];
+    variable_item_set_values_count(item, phases);
+    variable_item_set_current_value_index(item, app->tx_ric_slot);
+    const uint32_t capcode = app->tx_config.ric[phase];
+    if(capcode) {
+        snprintf(text, sizeof(text), "%lu/%c", capcode, 'A' + phase);
+    } else {
+        snprintf(text, sizeof(text), "-/%c", 'A' + phase);
+    }
     variable_item_set_current_value_text(item, text);
+}
+
+static void pocsag_pager_scene_tx_set_address(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    app->tx_ric_slot = variable_item_get_current_value_index(item);
+    pocsag_pager_scene_tx_show_address(app);
 }
 
 /*
@@ -342,6 +380,11 @@ static void pocsag_pager_scene_tx_set_baud(VariableItem* item) {
         app->tx_config.flex_4level = mode_index >= 2U;
         app->tx_config.flex_6400 = mode_index == 3U;
         variable_item_set_current_value_text(item, tx_flex_mode_text[mode_index]);
+        // The mode decides which phases exist, so the capcode row's entries
+        // change with it. Without this the row keeps the count it was given
+        // when the scene opened and will not step to the new phases until the
+        // scene is left and entered again.
+        pocsag_pager_scene_tx_show_address(app);
         return;
     }
     const uint8_t index = variable_item_get_current_value_index(item);
@@ -395,7 +438,8 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
 
     // Placeholders: show_protocol_options() below sets the label, choice count
     // and value of all three according to the protocol.
-    variable_item_list_add(app->variable_item_list, "RIC:", 1, NULL, app);
+    variable_item_list_add(
+        app->variable_item_list, "RIC:", 1, pocsag_pager_scene_tx_set_address, app);
     variable_item_list_add(
         app->variable_item_list,
         "Function:",

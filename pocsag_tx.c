@@ -57,12 +57,12 @@ bool pocsag_tx_encoder_prepare(PocsagTxEncoder* encoder, const PocsagTxConfig* c
     // function bits picking the alert, and no data words after it.
     if(config->protocol != PagerTxProtocolPocsag ||
        message_length > PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH ||
-       config->ric > PCSG_TX_RIC_MAX || config->function > 3U ||
+       config->ric[0] > PCSG_TX_RIC_MAX || config->function > 3U ||
        (config->baud != 512U && config->baud != 1200U && config->baud != 2400U)) {
         return false;
     }
 
-    const size_t address_offset = (config->ric & 7U) * 2U;
+    const size_t address_offset = (config->ric[0] & 7U) * 2U;
     const size_t message_words = (message_length * 7U + 19U) / 20U;
     const size_t used_data_words = address_offset + 1U + message_words + 1U;
     const size_t batch_count = (used_data_words + POCSAG_BATCH_WORDS - 1U) /
@@ -72,7 +72,7 @@ bool pocsag_tx_encoder_prepare(PocsagTxEncoder* encoder, const PocsagTxConfig* c
     uint32_t data_words[POCSAG_MAX_BATCHES * POCSAG_BATCH_WORDS];
     for(size_t i = 0; i < COUNT_OF(data_words); i++) data_words[i] = POCSAG_IDLE_WORD;
 
-    const uint32_t address_data = ((config->ric >> 3) << 2) | config->function;
+    const uint32_t address_data = ((config->ric[0] >> 3) << 2) | config->function;
     data_words[address_offset] = pocsag_tx_encode_codeword(address_data);
 
     for(size_t word = 0; word < message_words; word++) {

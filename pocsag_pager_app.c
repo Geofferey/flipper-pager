@@ -286,7 +286,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->filter.tone_spread = PCSGToneSpreadNormal;
     app->tx_config.protocol = PagerTxProtocolPocsag;
     app->tx_config.frequency = app->txrx->preset->frequency;
-    app->tx_config.ric = 0;
+    for(uint8_t i = 0; i < 4U; i++) app->tx_config.ric[i] = 0;
     app->tx_config.function = 3;
     app->tx_config.baud = 1200;
     app->tx_config.inverted = false;

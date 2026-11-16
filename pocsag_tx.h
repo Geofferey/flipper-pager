@@ -69,7 +69,14 @@ static inline bool pager_tx_mode_is_sequence(PagerTxMessageMode mode) {
 typedef struct {
     PagerTxProtocol protocol;
     uint32_t frequency;
-    uint32_t ric;
+    /*
+     * One capcode per FLEX phase, indexed by it. A capcode carries its own
+     * phase in bits 2 and 3 of its address, so which entry a capcode belongs
+     * in is a property of the capcode, not a choice - a single-phase pager
+     * listens only on the phase its address names. POCSAG has no phases and
+     * uses the first entry as its RIC.
+     */
+    uint32_t ric[4];
     uint16_t baud;
     uint8_t function;
     bool inverted;
