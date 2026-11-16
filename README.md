@@ -79,7 +79,8 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   2101249-1075843072. Other long-address sets are not supported. Zero clears a
   phase; addresses in the gap between the two ranges are rejected. Each phase
   can carry a short or long capcode independently, and the full capcodes are
-  retained when switching between the RX and TX apps. **Phases** picks how the
+  retained when switching between the RX and TX apps. **Phases**, in FLEX
+  params, picks how the
   phase a capcode goes out on is decided. `CAP` applies the standard frame and
   phase embedding rule, `Phase = (Integer(Addr/4)) Modulo 4`, filing each
   capcode under the phase its own address names. `Group` assigns phases by
@@ -92,7 +93,8 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   the receiver and match it. Switching to `CAP` re-files the capcodes already
   entered, and where two of them name the same phase the first is kept.
   **FLEX params** holds everything that describes the transmission rather than
-  the page. `Clock` picks which clock BIWs go out: `Off`, `Time`, `Date` or
+  the page, `Phases` above among them.
+  `Clock` picks which clock BIWs go out: `Off`, `Time`, `Date` or
   `Time+Date`. `UTC` and `DST` are the zone and the standard/daylight flag, and
   `ExtSec` the accurate-seconds trim, 0-7 in steps of 0.9375 s, left at 0
   because the frame grid is already clock-synchronized. Those three are fields

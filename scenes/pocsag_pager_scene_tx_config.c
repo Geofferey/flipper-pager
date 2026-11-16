@@ -4,7 +4,6 @@ typedef enum {
     PCSGTxConfigProtocol,
     PCSGTxConfigFrequency,
     PCSGTxConfigRic,
-    PCSGTxConfigPhases,
     PCSGTxConfigFunction,
     PCSGTxConfigBaud,
     PCSGTxConfigPolarity,
@@ -36,9 +35,6 @@ static uint8_t pocsag_pager_scene_tx_flex_mode_index(const PocsagTxConfig* confi
     if(config->flex_4level) return 2U;
     return config->flex_3200 ? 1U : 0U;
 }
-// Indexed by PagerTxPhaseMode.
-static const char* const tx_phase_text[PagerTxPhaseCount] = {"CAP", "Group"};
-
 #define PCSG_FREQ_CORR_COUNT                                                   \
     ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
 
@@ -118,7 +114,8 @@ static void pocsag_pager_scene_tx_clamp_address(POCSAGPagerApp* app) {
 
 /*
  * FLEX gets one capcode per phase and left and right step between them, the
- * row reading "416297/A". What the letter means is the Phases row's to say.
+ * row reading "416297/A". What the letter means is for the Phases row in FLEX
+ * params to say.
  *
  * Under CAP it is a readout: the capcode carries its phase in its own address
  * bits and is filed under the one it names. Under Group it is the setting:
@@ -197,50 +194,6 @@ static VariableItem* pocsag_pager_scene_tx_row(
     return NULL;
 }
 
-/*
- * CAP means the capcode decides, so choosing it moves every capcode onto the
- * phase the rule gives it. There is one entry per phase, so two capcodes that
- * derive to the same phase cannot both be kept: the first wins and the other
- * is cleared rather than quietly displacing it.
- */
-static void pocsag_pager_scene_tx_refile_address(POCSAGPagerApp* app) {
-    uint32_t filed[4] = {0};
-    for(uint8_t i = 0; i < 4U; i++) {
-        const uint32_t capcode = app->tx_config.ric[i];
-        if(!capcode) continue;
-        const uint8_t phase = flex_tx_capcode_slot(capcode);
-        if(!filed[phase]) filed[phase] = capcode;
-    }
-    memcpy(app->tx_config.ric, filed, sizeof(filed));
-}
-
-// Whether the capcode names its own phase, or the operator does. FLEX only.
-static void pocsag_pager_scene_tx_show_phases(POCSAGPagerApp* app) {
-    const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
-    VariableItem* item = pocsag_pager_scene_tx_row(
-        app, PCSGTxConfigPhases, PagerTxPhaseCount, flex ? NULL : "N/A");
-    if(!item) return;
-    if(app->tx_config.phase_mode >= PagerTxPhaseCount) {
-        app->tx_config.phase_mode = PagerTxPhaseCap;
-    }
-    variable_item_set_current_value_index(item, app->tx_config.phase_mode);
-    variable_item_set_current_value_text(item, tx_phase_text[app->tx_config.phase_mode]);
-}
-
-static void pocsag_pager_scene_tx_set_phases(VariableItem* item) {
-    POCSAGPagerApp* app = variable_item_get_context(item);
-    if(app->tx_config.protocol == PagerTxProtocolFlex) {
-        app->tx_config.phase_mode = variable_item_get_current_value_index(item);
-        if(app->tx_config.phase_mode == PagerTxPhaseCap) {
-            pocsag_pager_scene_tx_refile_address(app);
-        }
-    }
-    pocsag_pager_scene_tx_show_phases(app);
-    // Capcodes may have moved, and the letter is read from the slot they sit
-    // in, so the row above is redrawn with them.
-    pocsag_pager_scene_tx_show_address(app);
-}
-
 // The clock words and everything else FLEX-only live in their own scene, so
 // this row is a door rather than a setting.
 static void pocsag_pager_scene_tx_show_params(POCSAGPagerApp* app) {
@@ -312,7 +265,6 @@ static void pocsag_pager_scene_tx_set_message(VariableItem* item) {
 static void pocsag_pager_scene_tx_show_protocol_options(POCSAGPagerApp* app) {
     const bool flex = app->tx_config.protocol == PagerTxProtocolFlex;
     pocsag_pager_scene_tx_show_address(app);
-    pocsag_pager_scene_tx_show_phases(app);
 
     VariableItem* function =
         variable_item_list_get(app->variable_item_list, PCSGTxConfigFunction);
@@ -436,12 +388,6 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
     // and value of all three according to the protocol.
     variable_item_list_add(
         app->variable_item_list, "RIC:", 1, pocsag_pager_scene_tx_set_address, app);
-    variable_item_list_add(
-        app->variable_item_list,
-        "Phases:",
-        PagerTxPhaseCount,
-        pocsag_pager_scene_tx_set_phases,
-        app);
     variable_item_list_add(
         app->variable_item_list,
         "Function:",

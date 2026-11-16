@@ -9,6 +9,7 @@
  * layouts and ranges follow it; see README.md.
  */
 typedef enum {
+    PCSGTxParamsPhases,
     PCSGTxParamsClock,
     PCSGTxParamsUtc,
     PCSGTxParamsDst,
@@ -29,12 +30,57 @@ static const char* const tx_params_off_on[] = {"Off", "On"};
 // Indexed by the stored bit mask, so the order follows PCSG_TX_CLOCK_*.
 const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT] = {"Off", "Time", "Date", "Time+Date"};
 
+// Indexed by PagerTxPhaseMode.
+static const char* const tx_phase_text[PagerTxPhaseCount] = {"CAP", "Group"};
+
 #define PCSG_TX_PARAMS_ERS_COUNT (PCSG_TX_ERS_CYCLES_MAX / PCSG_TX_ERS_CYCLES_STEP + 1U)
 
 static void pocsag_pager_scene_tx_params_show_toggle(VariableItem* item, bool value) {
     const uint8_t index = value ? 1U : 0U;
     variable_item_set_current_value_index(item, index);
     variable_item_set_current_value_text(item, tx_params_off_on[index]);
+}
+
+/*
+ * CAP means the capcode decides, so choosing it moves every capcode onto the
+ * phase the rule gives it. There is one entry per phase, so two capcodes that
+ * derive to the same phase cannot both be kept: the first wins and the other
+ * is cleared rather than quietly displacing it.
+ */
+static void pocsag_pager_scene_tx_params_refile_address(POCSAGPagerApp* app) {
+    uint32_t filed[4] = {0};
+    for(uint8_t i = 0; i < 4U; i++) {
+        const uint32_t capcode = app->tx_config.ric[i];
+        if(!capcode) continue;
+        const uint8_t phase = flex_tx_capcode_slot(capcode);
+        if(!filed[phase]) filed[phase] = capcode;
+    }
+    memcpy(app->tx_config.ric, filed, sizeof(filed));
+}
+
+// Whether the capcode names its own phase, or the operator does.
+static void pocsag_pager_scene_tx_params_show_phases(POCSAGPagerApp* app) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxParamsPhases);
+    if(!item) return;
+    if(app->tx_config.phase_mode >= PagerTxPhaseCount) {
+        app->tx_config.phase_mode = PagerTxPhaseCap;
+    }
+    variable_item_set_current_value_index(item, app->tx_config.phase_mode);
+    variable_item_set_current_value_text(item, tx_phase_text[app->tx_config.phase_mode]);
+}
+
+/*
+ * The Capcode row lives in the config scene, so re-filing cannot redraw it
+ * from here. It does not need to: that scene rebuilds its rows on entry, so
+ * the capcodes are read back out of their new slots on the way out of this one.
+ */
+static void pocsag_pager_scene_tx_params_set_phases(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    app->tx_config.phase_mode = variable_item_get_current_value_index(item);
+    if(app->tx_config.phase_mode == PagerTxPhaseCap) {
+        pocsag_pager_scene_tx_params_refile_address(app);
+    }
+    pocsag_pager_scene_tx_params_show_phases(app);
 }
 
 /*
@@ -230,6 +276,14 @@ static void pocsag_pager_scene_tx_params_enter_callback(void* context, uint32_t 
 void pocsag_pager_scene_tx_params_on_enter(void* context) {
     POCSAGPagerApp* app = context;
     VariableItem* item;
+
+    variable_item_list_add(
+        app->variable_item_list,
+        "Phases:",
+        PagerTxPhaseCount,
+        pocsag_pager_scene_tx_params_set_phases,
+        app);
+    pocsag_pager_scene_tx_params_show_phases(app);
 
     variable_item_list_add(
         app->variable_item_list,
