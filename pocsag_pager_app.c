@@ -361,7 +361,16 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
         app->txrx->worker, (SubGhzWorkerPairCallback)subghz_receiver_decode);
     subghz_worker_set_context(app->txrx->worker, app->txrx->receiver);
 
+    /*
+     * Start goes on the stack either way, even when receiving is to begin at
+     * once: back out of the receiver and it is there, as it is on any other
+     * run, and the receiver's own exit path looks for it. Nothing of it is
+     * drawn, the receiver being pushed on top before the dispatcher runs.
+     */
     scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneStart);
+    if(app->filter.auto_receive) {
+        scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneReceiver);
+    }
 #else
     // No menu to open on: transmitting is the whole app.
     scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxConfig);

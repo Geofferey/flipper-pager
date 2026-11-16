@@ -260,6 +260,8 @@ typedef struct {
     // FLEX4 soft-decision (Chase) recovery of weak words; off by default, and
     // allocates nothing in the decoder unless enabled.
     bool weak_decode;
+    /** Begin receiving as the app opens, rather than waiting at the menu. */
+    bool auto_receive;
     /*
      * HUD: where each part of the displayed clock comes from, and what the
      * Network info screen shows. Display only - the log keeps timestamping

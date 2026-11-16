@@ -185,6 +185,10 @@ Receiver settings and the transmitter protocol, frequency, address, function,
 baud, polarity, correction and message text are saved on a clean app exit.
 The message is stored in plain text in that file, like the rest of it.
 
+**Auto receive** starts receiving as the app opens instead of waiting at the
+menu. The menu is still behind it, so Back from the receiver reaches it as on
+any other run; it is simply never drawn.
+
 **Cap. Filter** and **RIC Filter** offer `Off`, `Exact`, `Range`, `Alert` and
 `AlertRng`. The first three decide what is shown. The two alert modes hide
 nothing: every message still arrives and is still listed, and only the

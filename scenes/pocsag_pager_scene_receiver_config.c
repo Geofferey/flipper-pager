@@ -11,6 +11,7 @@ enum PCSGSettingIndex {
     PCSGSettingIndexFlexEncrypted,
     PCSGSettingIndexFlexPartial,
     PCSGSettingIndexLogging,
+    PCSGSettingIndexAutoReceive,
     PCSGSettingIndexAlert,
     PCSGSettingIndexAlertTone,
     PCSGSettingIndexReceiveLed,
@@ -260,6 +261,12 @@ const char* const raw_capture_text[RAW_CAPTURE_COUNT] = {
     "Off",
     "On",
 };
+
+#define AUTO_RECEIVE_COUNT 2
+const char* const auto_receive_text[AUTO_RECEIVE_COUNT] = {
+    "Disable",
+    "Enable",
+};
 // Index 0 is the lowest the arrows reach; the centre index is no correction.
 #define FREQ_CORR_COUNT \
     ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
@@ -373,6 +380,10 @@ static const PCSGConfigRow pcsg_config_rows[] = {
     [PCSGSettingIndexLogging] =
         {"Logging:", logging_text, PCSG_ROW(filter.log_temp), 0, LOGGING_COUNT, PCSGRowBool,
          PCSGSideNone},
+    // Receiving begins as the app opens, the menu going by unseen.
+    [PCSGSettingIndexAutoReceive] =
+        {"Auto receive:", auto_receive_text, PCSG_ROW(filter.auto_receive), 0,
+         AUTO_RECEIVE_COUNT, PCSGRowBool, PCSGSideNone},
     [PCSGSettingIndexAlert] =
         {"Alert:", alert_text, PCSG_ROW(filter.alert), 0, PCSGAlertCount, PCSGRowEnum,
          PCSGSideAlert},
@@ -586,6 +597,7 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     pcsg_config_row_add(app, PCSGSettingIndexFlexEncrypted);
     pcsg_config_row_add(app, PCSGSettingIndexFlexPartial);
     pcsg_config_row_add(app, PCSGSettingIndexLogging);
+    pcsg_config_row_add(app, PCSGSettingIndexAutoReceive);
     pcsg_config_row_add(app, PCSGSettingIndexAlert);
     pcsg_config_row_add(app, PCSGSettingIndexAlertTone);
     pcsg_config_row_add(app, PCSGSettingIndexReceiveLed);
