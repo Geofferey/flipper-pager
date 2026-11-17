@@ -23,9 +23,11 @@ typedef struct {
     /** Centre. Big digits, so `clock` carries only digits and colons. */
     char clock[16];
     bool have_clock;
-    /** Under it: the date, and which clock the hour came from. */
-    char date[20];
-    char source[8];
+    /** Under it: the date with the clock's source beside it, as
+     *  "1994-11-17 | NET". Centred under the clock, so the two read as one.
+     *  Sized for the longest the compiler can prove, not the longest real
+     *  date, so composing the two needs no truncation warning. */
+    char date[28];
     /** Identity and frame rows along the bottom. */
     char ssid1[20];
     char ssid2[16];

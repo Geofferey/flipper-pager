@@ -246,8 +246,10 @@ only when daylight is advertised, the offset beside it already being the one in
 force - the roaming flag from the frame information word, the frame and cycle, the count of
 messages held this session, and the accurate-seconds trim.
 
-`NET` or `RTC` to the right of the date says which clock the hour on screen
-actually came from, and **OK swaps between them**: `RTC` shows the Flipper's own
+The date carries which clock the hour came from beside it, as
+`1994-11-17 | NET` - the same shape the zone row uses for its daylight flag,
+and centred under the clock so the two read as one. **OK swaps between them**:
+`RTC` shows the Flipper's own
 time and date whatever the HUD options are set to, which is also the one reading
 that needs no reception, so it works with nothing on the air. The override lasts
 while the screen is open and is forgotten on the way out - it is a look at the

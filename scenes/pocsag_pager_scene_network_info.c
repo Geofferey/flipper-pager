@@ -88,9 +88,6 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
         } else {
             snprintf(f.clock, sizeof(f.clock), "--:%02u:%02u", now.minute, now.second);
         }
-        // Which clock the hour came from, Select or the HUD options having
-        // decided it. Beside the date, where the eye already is.
-        strlcpy(f.source, now.hour_local ? "RTC" : "NET", sizeof(f.source));
     }
 
     /*
@@ -98,7 +95,13 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
      * that is not today's - a stale 2007 on one, today's day and month with
      * the year field wrapped to 1994 on another - so Local is a real choice
      * rather than a fallback.
+     *
+     * Which clock the hour came from joins it as "1994-11-17 | NET", the same
+     * shape the zone row uses for its daylight flag, and centred under the
+     * clock so the two read as one. With the date row off it stands alone;
+     * with no clock at all there is no hour to have a source.
      */
+    const char* source = now.hour_local ? "RTC" : "NET";
     if(app->filter.hud_show_date) {
         // Year and day/month are chosen apart, so they are built apart: the
         // networks seen so far get one right and the other wrong.
@@ -125,11 +128,20 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
             strlcpy(day_text, "\?\?-\?\?", sizeof(day_text));
         }
 
+        char date_text[20];
         if(year_text[0] == '?' && day_text[0] == '?') {
-            strlcpy(f.date, "no date", sizeof(f.date));
+            strlcpy(date_text, "no date", sizeof(date_text));
         } else {
-            snprintf(f.date, sizeof(f.date), "%s-%s", year_text, day_text);
+            snprintf(date_text, sizeof(date_text), "%s-%s", year_text, day_text);
         }
+
+        if(have_clock) {
+            snprintf(f.date, sizeof(f.date), "%s | %s", date_text, source);
+        } else {
+            strlcpy(f.date, date_text, sizeof(f.date));
+        }
+    } else if(have_clock) {
+        strlcpy(f.date, source, sizeof(f.date));
     }
 
     // Who is transmitting: SSID1 on the left, SSID2 on the right.

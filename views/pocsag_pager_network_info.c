@@ -91,13 +91,6 @@ static void pcsg_view_network_info_draw(Canvas* canvas, PCSGNetworkInfoFields* m
 
     pcsg_view_network_info_str(
         canvas, PCSG_NETWORK_MID_X, PCSG_NETWORK_DATE_Y, AlignCenter, FontSecondary, model->date);
-    pcsg_view_network_info_str(
-        canvas,
-        PCSG_NETWORK_RIGHT_X,
-        PCSG_NETWORK_DATE_Y,
-        AlignRight,
-        FontSecondary,
-        model->source);
 
     pcsg_view_network_info_str(
         canvas, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_ROW1_Y, AlignLeft, FontSecondary, model->ssid1);
