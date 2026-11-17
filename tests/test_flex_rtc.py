@@ -29,7 +29,7 @@ typedef struct {
     SubGhzProtocolDecoderFlex* flex_sampler;
 } TestTxRx;
 typedef struct {
-    struct { PCSGTimeSync time_sync; } filter;
+    struct { PCSGTimeSync time_sync; PCSGDst dst; } filter;
     TestTxRx* txrx;
     uint32_t time_sync_sequence;
 } POCSAGPagerApp;
@@ -46,7 +46,7 @@ static void make_clock(uint32_t words[88],unsigned hour,bool standard,unsigned s
     memset(words,0,88*sizeof(*words));
     words[0]=encode(checksum((3U<<10)|(2U<<8))); // two auxiliary BIWs, no pages
     words[1]=encode(checksum((2U<<4)|(hour<<7)));
-    words[2]=encode(checksum((5U<<4)|(subtype<<7)|(standard?1U<<20:0)));
+    words[2]=encode(checksum((5U<<4)|(subtype<<7)|(standard?1U<<16:0)));
 }
 static void check_snapshot(SubGhzProtocolDecoderFlex* d,bool valid,unsigned hour,bool standard) {
     FlexFrameTiming t;
@@ -137,22 +137,32 @@ static void rtc_modes(void) {
     for(unsigned mode=0;mode<3;mode++)
     for(unsigned ready=0;ready<2;ready++)
     for(unsigned standard=0;standard<2;standard++)
+    for(unsigned dst=0;dst<PCSGDstCount;dst++)
     for(unsigned h=0;h<24;h++)
     for(unsigned c=0;c<COUNT_OF(cycles);c++)
     for(unsigned f=0;f<COUNT_OF(frames);f++)
     for(unsigned a=0;a<COUNT_OF(ages);a++) {
-        app.filter.time_sync=mode; app.time_sync_sequence=0;
+        app.filter.time_sync=mode; app.filter.dst=dst; app.time_sync_sequence=0;
         test_tick=1000; d->frame_chase=false;
         subghz_protocol_decoder_flex_reset_frame_timing(d);
         publish(d,cycles[c],frames[f]);
         d->timing_clock=h|(ready?(FLEX_CLOCK_HAVE_HOUR|FLEX_CLOCK_HAVE_ZONE):0)|
                            (standard?FLEX_CLOCK_STANDARD:0);
+        // A zone word has arrived, so the flag riding in it counts.
+        d->timing_zone=0;
         test_tick+=ages[a]; rtc_value=original; rtc_writes=rtc_reads=0;
         pcsg_time_sync(&app);
         unsigned gps=rounded_second(cycles[c],frames[f],ages[a]);
-        // Reference: start at the BIW's local daylight hour, add frame elapsed
-        // seconds, subtract the GPS offset and standard-time hour, wrap a day.
-        int local=(h*3600+gps-18-(standard?3600:0)+86400)%86400;
+        /*
+         * Reference: the BIW's hour as transmitted, plus frame elapsed
+         * seconds, less the GPS offset, then reconciled against the setting.
+         * Off corrects a network advertising daylight, On one advertising
+         * standard, Disabled neither.
+         */
+        int shift=0;
+        if(dst==PCSGDstOff) shift=standard?0:-1;
+        else if(dst==PCSGDstOn) shift=standard?1:0;
+        int local=(h*3600+gps-18+shift*3600+86400)%86400;
         if(mode==PCSGTimeSyncOff) {
             assert(!rtc_writes && !rtc_reads);
         } else if(mode==PCSGTimeSyncFull && ready) {
@@ -176,7 +186,8 @@ static void rtc_modes(void) {
         cases++;
     }
     // A subsequent fresh frame must still correct a changed/drifting RTC.
-    app.filter.time_sync=PCSGTimeSyncFull;
+    // Pinned rather than left wherever the loop above finished.
+    app.filter.time_sync=PCSGTimeSyncFull; app.filter.dst=PCSGDstDisabled;
     for(unsigned n=0;n<3;n++) {
         test_tick=1000+n*1875; publish(d,7,50+n);
         d->timing_clock=13|FLEX_CLOCK_HAVE_HOUR|FLEX_CLOCK_HAVE_ZONE;
@@ -185,9 +196,11 @@ static void rtc_modes(void) {
     }
     // Fresh first FIW synchronizes MM:SS; later BIWs set the hour in the same frame.
     subghz_protocol_decoder_flex_reset_frame_timing(d); publish(d,7,50);
+    app.filter.dst=PCSGDstOff;
     rtc_value=original; pcsg_time_sync(&app); assert(rtc_value.hour==6);
     uint32_t words[88]={0}; bool valid[88]={true,true,true},chased[88]={0};
-    words[1]=checksum((2U<<4)|(13U<<7)); words[2]=checksum((5U<<4)|(4U<<7)|(1U<<20));
+    // Flag clear: the network advertises daylight, which DST: Off takes back.
+    words[1]=checksum((2U<<4)|(13U<<7)); words[2]=checksum((5U<<4)|(4U<<7));
     flex_decode_clock(d,words,valid,chased,3); pcsg_time_sync(&app);
     assert(rtc_value.hour==12); cases++;
 
@@ -234,6 +247,7 @@ def main():
     unit += without_includes((firmware / 'lib/datetime/datetime.c').read_text())
     settings = (root / 'pocsag_pager_settings.h').read_text()
     unit += re.search(r'typedef enum \{\s*PCSGTimeSyncOff,.*?\} PCSGTimeSync;', settings, re.S)[0]
+    unit += re.search(r'typedef enum \{\s*PCSGDstOff,.*?\} PCSGDst;', settings, re.S)[0]
     unit += RTC_SHIMS + without_includes((root / 'pocsag_pager_time.c').read_text()) + RTC_TESTS
     with tempfile.TemporaryDirectory(prefix='flex-rtc-') as tmp:
         path = Path(tmp)

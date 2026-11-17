@@ -427,14 +427,19 @@ continuous frame timing supplies the minutes and seconds.
 `Settings -> DST:` is **daylight saving where you are**, not on the network. It
 sits beside `Time sync` because it reaches the RTC and not only the display.
 
-| | |
-|---|---|
-| `Off` | a network advertising daylight time is an hour fast, so the hour and the zone offset lose an hour. Default. |
-| `On` | whatever the network advertises is accepted as sent. |
+`Off` and `On` are the two answers to "is daylight saving in force here", and
+each corrects the network that disagrees with it. `Disabled` corrects nothing.
 
-Nothing else moves the clock. A network advertising standard time is taken as
-transmitted under either setting, and `Off` is also the right standing value
-where daylight saving is never observed.
+| | network advertises daylight | network advertises standard |
+|---|---|---|
+| `Off` | an hour fast: **take one off** | agreed, left alone |
+| `On` | agreed, left alone | an hour slow: **add one** |
+| `Disabled` | left alone | left alone |
+
+Default is `Off`, which is also the standing value where daylight saving is
+never observed; `Disabled` is the one for a network whose flag cannot be
+trusted. The zone offset moves with the hour, so the label and the digits
+always agree about which offset is in force.
 
 The reason the receiver gets the last word is that **the network knows which
 kind of time it is sending, and only the receiver knows whether that is the
@@ -457,16 +462,18 @@ accurately. Its clock is live while its date is not. Nothing is lying; a stale
 date is driving correct logic to an answer that stopped being true in November.
 
 So `DST: Off` corrects network B and leaves network A alone, from the flag
-alone, and it keeps working when the season turns: in summer, `DST: On` accepts
-network B's daylight time, which is right by then, and accepts network A once it
-switches over too.
+alone. Come summer `DST: On` is the mirror of it: network B's daylight time is
+right by then and is left alone, and network A is corrected until it switches
+over - which is the case `Off` cannot express, and the reason `On` adds an hour
+rather than simply doing nothing.
 
 One transmitter this cannot satisfy is Mayhem's FLEX TX with DST enabled. It
 sends `L` from `pmem::dst_enabled()` - whether daylight saving is *configured* -
 rather than `dst_in_range`, whether it is in *force*, so in midwinter it
 advertises daylight while transmitting standard time. That is a malformed
 transmission, and `DST: Off` will take an hour off it. Leave DST off on the
-PortaPack when using it as a reference.
+PortaPack when using it as a reference, or set `DST: Disabled` here, which
+takes every transmitter exactly as sent.
 
 An earlier build gated this on `AccSec >= 4` instead - the accurate-seconds
 field, which the decoder misread as the flag for several releases. On these

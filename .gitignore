@@ -3,3 +3,4 @@
 .vscode
 CMakeLists.txt
 dist
+__pycache__

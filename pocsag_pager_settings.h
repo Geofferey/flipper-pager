@@ -187,17 +187,24 @@ typedef enum {
  * Whether daylight saving is in force here, which overrides what a network
  * says about itself.
  *
- * A network advertising daylight time (word bit 16 clear) while this is Off is
- * an hour fast, so the hour comes off. Nothing else moves the clock: a network
- * that advertises standard time is taken as sent, and On accepts whatever is
- * advertised. Observed networks are honest about this flag, so the only thing
- * they cannot know is the season - which is what this supplies.
+ * The network's word bit 16 says which kind of time it is sending; only the
+ * receiver knows whether that is the season. Off and On are the two answers to
+ * that, and each corrects the network that disagrees with it:
  *
- * Needs changing when the clocks do. See README.md.
+ *   Off       a network advertising daylight is an hour fast - take one off
+ *   On        a network advertising standard is an hour slow - add one
+ *   Disabled  the hour is used exactly as transmitted, whatever is advertised
+ *
+ * A network that already agrees is left alone either way. Off is also the
+ * standing value where daylight saving is never observed, and Disabled the one
+ * for a network whose flag cannot be trusted.
+ *
+ * Off and On need changing when the clocks do. See README.md.
  */
 typedef enum {
     PCSGDstOff,
     PCSGDstOn,
+    PCSGDstDisabled,
     PCSGDstCount,
 } PCSGDst;
 

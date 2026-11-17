@@ -84,11 +84,12 @@ const char* const time_sync_text[PCSGTimeSyncCount] = {
     "HH:MM:SS",
 };
 
-// Daylight saving here, not on the network. Off takes an hour off a network
-// that advertises daylight time; On accepts whatever it advertises.
+// Daylight saving here, not on the network: each corrects the network that
+// disagrees with it. Disabled corrects nothing.
 const char* const dst_text[PCSGDstCount] = {
     "Off",
     "On",
+    "Disabled",
 };
 
 #define LED_SELECTION_COUNT (PCSGLedColorCount + 1U)

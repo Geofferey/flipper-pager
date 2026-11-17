@@ -18,15 +18,17 @@ static uint32_t pcsg_time_frame_second(
     const FlexFrameTiming* timing,
     uint32_t age_ms,
     uint8_t* hour,
-    bool standard_shift) {
+    int8_t dst_hours) {
     // FIW publication marks this frame's start; elapsed time includes reception.
     const uint32_t gps_seconds =
         ((uint32_t)timing->cycle * 240000U + (uint32_t)timing->frame * 1875U + age_ms + 500U) /
         1000U;
     const uint32_t gps_second = gps_seconds % 3600U;
     if(hour) {
-        // An hour off when the gate says the sent hour is daylight-pinned.
-        *hour = (timing->hour + gps_seconds / 3600U + 24U - (standard_shift ? 1U : 0U) -
+        // 23, 24 or 25: the wrap and the daylight correction in one term, so
+        // the sum stays positive whichever way the correction goes.
+        const uint32_t adjust = (uint32_t)(24 + dst_hours);
+        *hour = (timing->hour + gps_seconds / 3600U + adjust -
                  (gps_second < PCSG_GPS_UTC_OFFSET_S)) %
                 24U;
     }
@@ -34,21 +36,29 @@ static uint32_t pcsg_time_frame_second(
 }
 
 /*
- * Whether this frame's hour and zone offset lose an hour, because the network
- * is advertising daylight time in a season that is not on it.
+ * Hours to move this frame's clock and zone offset by, reconciling what the
+ * network advertises against whether daylight saving is in force here.
  *
  * The network knows which kind of time it is sending; only the receiver knows
- * whether daylight saving is actually in force. So DST: Off is an override,
- * and the one case it acts on is a network advertising daylight while it is
- * not. Everything else is taken as transmitted.
+ * whether that is the season, so the setting is the authority and each option
+ * corrects the network that disagrees with it. A network already in step is
+ * left alone, and Disabled leaves every network alone.
  *
  * The hour and the zone offset move together or not at all: a UTC-8 label over
  * a clock still reading -7 is worse than either answer on its own.
  */
-static bool pcsg_time_standard_shift(const POCSAGPagerApp* app, const FlexFrameTiming* timing) {
-    if(app->filter.dst != PCSGDstOff) return false;
+static int8_t pcsg_time_dst_hours(const POCSAGPagerApp* app, const FlexFrameTiming* timing) {
     // The zone word carries the flag, so without one nothing is advertised.
-    return timing->zone < 32U && !timing->standard_time;
+    if(timing->zone >= 32U) return 0;
+    const bool advertises_daylight = !timing->standard_time;
+    switch(app->filter.dst) {
+    case PCSGDstOff:
+        return advertises_daylight ? -1 : 0;
+    case PCSGDstOn:
+        return advertises_daylight ? 0 : 1;
+    default:
+        return 0;
+    }
 }
 
 /*
@@ -124,10 +134,10 @@ void pcsg_zone_format(int16_t minutes, char* out, size_t size) {
 }
 
 static bool
-    pcsg_time_zone_minutes(const FlexFrameTiming* timing, int16_t* minutes, bool standard_shift) {
-    // The code as transmitted, less the hour the clock itself loses, so the
-    // label and the digits agree about which offset is in force.
-    *minutes = pcsg_zone_minutes(timing->zone) - (standard_shift ? 60 : 0);
+    pcsg_time_zone_minutes(const FlexFrameTiming* timing, int16_t* minutes, int8_t dst_hours) {
+    // The code as transmitted, moved by whatever the clock itself moves, so
+    // the label and the digits agree about which offset is in force.
+    *minutes = pcsg_zone_minutes(timing->zone) + (int16_t)dst_hours * 60;
     return timing->zone < 32U;
 }
 
@@ -144,12 +154,12 @@ bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
      * are known as soon as any frame is, with no clock word involved. Only the
      * hour needs one, and only the hour waits for it.
      */
-    const bool shift = pcsg_time_standard_shift(app, &timing);
-    const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, &out->hour, shift);
+    const int8_t dst_hours = pcsg_time_dst_hours(app, &timing);
+    const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, &out->hour, dst_hours);
     out->minute = sec / 60U;
     out->second = sec % 60U;
     out->have_hour = timing.have_hour;
-    out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes, shift);
+    out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes, dst_hours);
     out->standard_time = timing.standard_time;
 
     /*
@@ -192,10 +202,10 @@ void pcsg_time_sync(POCSAGPagerApp* app) {
 
     const bool full = app->filter.time_sync == PCSGTimeSyncFull && timing.clock_valid;
     uint8_t network_hour;
-    // The same shift the screen gets: Full sync would otherwise write an hour
-    // the HUD never showed.
+    // The same correction the screen gets: Full sync would otherwise write an
+    // hour the HUD never showed.
     const int32_t second = (int32_t)pcsg_time_frame_second(
-        &timing, age_ms, &network_hour, pcsg_time_standard_shift(app, &timing));
+        &timing, age_ms, &network_hour, pcsg_time_dst_hours(app, &timing));
 
     DateTime target;
     furi_hal_rtc_get_datetime(&target);
