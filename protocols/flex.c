@@ -1425,18 +1425,19 @@ static void flex_decode_clock(
             if(hour < 24U) clock = (clock & ~FLEX_CLOCK_HOUR_MASK) | hour | FLEX_CLOCK_HAVE_HOUR;
         } else if(type == 5U && (((word >> 7) & 15U) == 4U || ((word >> 7) & 15U) == 5U)) {
             clock = (clock & ~FLEX_CLOCK_STANDARD) | FLEX_CLOCK_HAVE_ZONE;
-            if(word & (1UL << 20)) clock |= FLEX_CLOCK_STANDARD;
+            /*
+             * L, standard against daylight, at bit 16. This read bit 20, and
+             * so never saw the flag at all: both this app's transmitter and
+             * Mayhem's write it at 16, and transmitting with daylight on or
+             * off moved nothing here. Bit 20 is the top bit of the accurate
+             * seconds field below, so the old reading also turned a seconds
+             * trim of 4 or more into a standard-time hour.
+             */
+            if(word & (1UL << 16)) clock |= FLEX_CLOCK_STANDARD;
             // The zone code names the zone; the flag above says which of its
             // two offsets is in force.
             zone = (word >> 11) & 31U;
-            /*
-             * Accurate seconds, bits 18-20 of the same word. Bit 20 is also
-             * what the line above reads as the standard-time flag, which the
-             * datasheets put at 16 instead: the two readings cannot both be
-             * right. This reports the field as the datasheets define it and
-             * leaves the clock alone, so the screen shows both and the network
-             * itself settles which is which.
-             */
+            // Accurate seconds, bits 18-20, which round-trips from Mayhem.
             ext_sec = (word >> 18) & 7U;
             have |= FLEX_SYS_HAVE_EXT_SEC;
         } else if(type == 7U) {

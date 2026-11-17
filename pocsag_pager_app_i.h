@@ -152,6 +152,9 @@ typedef struct {
     bool have_hour;
     int16_t zone_minutes;
     bool have_zone;
+    /** The zone word's L flag: set is standard time, clear is daylight. Only
+     *  meaningful alongside have_zone, the flag riding in the same word. */
+    bool standard_time;
 } PCSGNetworkTime;
 
 /** False until the network's clock words arrive, or while they are stale. */

@@ -241,7 +241,9 @@ FLEX decoding features:
 are with left. It shows what the network has said about itself, with its clock
 as the centre piece: the zone and the offset in force, the date, the local ID
 and coverage zone from the SSID1 word, the country code from SSID2, the
-roaming flag from the frame information word, the frame and cycle, the count of
+standard/daylight flag beside the zone as `UTC-8 | DST` - divider and all shown
+only when daylight is advertised, the offset beside it already being the one in
+force - the roaming flag from the frame information word, the frame and cycle, the count of
 messages held this session, and the accurate-seconds trim. The message count is
 the same one the status bar carries, so the two always agree - including that it
 falls as well as rises, the history being a rolling window. A field reads `-` until a word carrying it arrives, so
@@ -256,7 +258,8 @@ until then, which is the default. The year is chosen apart from the day and
 month because that is the part the observed networks get wrong: both send
 today's day and month, one with the year field wrapped to 1994 and the other
 with a date stale by years. `Year: Local` with `Day/Month: Network` reads the
-network's date and the Flipper's year. `Offset` shifts the displayed hour by up to twelve hours either
+network's date and the Flipper's year.
+`Offset` shifts the displayed hour by up to twelve hours either
 way, for a network whose hour is simply wrong. `Freq switch` decides what
 becomes of the reading when the channel changes: `Discard` throws it away, as
 the app always did, and `Keep` carries it over - useful across channels of one
@@ -283,11 +286,19 @@ time of day: a commercial channel was observed carrying an accurate time of day
 and a 2007 date, so a date that looks wrong is the network's and not a decoding
 fault.
 
-The accurate-seconds trim is read from bits 18-20 of the system message word,
-where the decoder datasheets put it. Bit 20 is also what this app's clock
-reads as the standard/daylight flag, which the same datasheets put at bit 16,
-so the two readings cannot both be right. Both are shown and neither is
-adjusted to suit the other.
+The field shown as `ExtSec` is the spec's **Accurate Seconds**, bits 18-20 of
+the system message word, and the standard/daylight flag `L` is bit 16. The
+receiver read that flag at bit 20 until the TI tables were read properly: bit 20
+is the top bit of Accurate Seconds, so the old reading turned a trim of 4 or more
+into a standard-time hour - see
+[the standard/daylight flag](#the-standarddaylight-flag). Accurate Seconds says
+how much to add to the
+*coarse* seconds of the time word, in 1/64-minute (0.9375 s) steps, trimming
+those 7.5 s steps to within a second. This app never reads the coarse seconds -
+continuous frame timing supplies the minutes and seconds - so there is nothing
+for the trim to refine, and it is displayed rather than applied. The name
+`ExtSec` is Mayhem's, kept for parity with the transmitter most people will test
+against.
 
 ## Logging
 
@@ -391,14 +402,26 @@ Hour and standard/daylight handling are adapted from Mayhem FLEX RX's
 [`network_hour`, `update_rtc`, and BIW handling](https://github.com/Geofferey/mayhem-firmware/blob/67345f64389694e45d1873587a0f052c4baed8e5/firmware/application/external/flex_rx/ui_flex_rx.cpp).
 The time BIW supplies the hour; SysInfo subtype 4/5 supplies the
 standard/daylight flag. The BIWs' coarse/accurate seconds are not used;
-continuous frame timing supplies the minutes and seconds. The receiver reads no
-date BIW, so a date this app transmits is not one it displays.
+continuous frame timing supplies the minutes and seconds.
 
-Known discrepancy: the receiver reads that standard/daylight flag at word bit
-20, which the decoder datasheets referenced under the transmitter define as the
-top bit of the accurate-seconds field, the flag itself being bit 16. So the
-receiver does not see the flag the transmitter sends, and a network sending an
-accurate-seconds trim reads to it as standard time.
+### The standard/daylight flag
+
+`L`, at word bit 16, says which kind of time a network is transmitting: set for
+local standard time, clear for daylight saving time. It is read, reported on
+the Network screen beside the zone as `UTC-8 | DST` when daylight is
+advertised, and **not applied to the clock** - the transmitted hour is used
+exactly as sent, which is what the spec prescribes.
+
+The receiver read this flag at bit 20 for several releases, which is the top bit
+of the accurate-seconds field rather than the flag at all, so toggling daylight
+on a transmitter moved nothing. Both this app's `flex_tx_biw_zone` and Mayhem's
+`flex_biw_sysinfo` write it at 16, which is what settled the position against a
+transmitter rather than against inference.
+
+Note that Mayhem sends `L` from `pmem::dst_enabled()` - whether daylight saving
+is *configured* - rather than `dst_in_range`, whether it is currently in
+*force*. A PortaPack with DST enabled therefore advertises daylight in
+midwinter, and the marker is faithfully reporting what it sent.
 
 ## References for the FLEX transmitter
 
@@ -465,7 +488,10 @@ throughout, both evidently written from the Motorola specification:
   product specification, 1998, section 8.7.9 and tables 49 to 53.
 - Texas Instruments **[TMS320FLEX design
   manual](https://www.ti.com/lit/pdf/spra183)** section 2.5, tables 2-5 to 2-8,
-  and its companion [spra193](https://www.ti.com/lit/pdf/spra193).
+  and its companion [spra193](https://www.ti.com/lit/pdf/spra193). Section 2.5.3
+  and table 2-7 are the authority for the system message word used here: the
+  `S` Accurate Seconds, `L` daylight and `Z` zone definitions below are quoted
+  from it, and table 2-8 is the zone table in `pcsg_zone_quarters`.
 
 Both number the word as four check bits, the three `f` format bits, then `s0`
 to `s13`. Taken as word bits, that puts the date's year at 7, day at 12 and
@@ -477,9 +503,11 @@ what confirmed the reading of the two tables.
 
 Three details follow from the datasheets rather than from any implementation:
 
-- The year field is an **absolute index into 1994-2025**, not modulo 32
-  arithmetic rolling into a later era: nothing on the air names an era, so a
-  receiver cannot resolve one. A later year goes out as its calendar twin, the
+- The year field is **read as an index into 1994-2025**. TI table 2-5 does
+  define it as "the year with modulo arithmetic ... representing 1994 through
+  2025, 2026 through 2057, etc", so eras exist on paper - but nothing on the air
+  names which era is in force, so a receiver cannot resolve one and this app
+  does not try. A later year goes out as its calendar twin, the
   year in that window with the same leap status and the same weekday for
   1 January, so every date in it still lands on the right day - 2026 is sent as
   2015. Mayhem's `flex_equiv_year()` does the same and reports the substitution
@@ -488,12 +516,41 @@ Three details follow from the datasheets rather than from any implementation:
 - `L` **set** means the transmitted hour is local standard time, clear means
   daylight. The zone code is always the standard-time offset, which is why the
   table has codes for -3:30 and +9:30 but none for daylight in Newfoundland or
-  Adelaide.
+  Adelaide. `L` describes the transmitted time; it does not ask a receiver to
+  adjust it. The spec is explicit that "the time transmitted is the local time
+  for the transmitted time zone", so the hour is used as sent. All 31 zone
+  codes in TI table 2-8 were checked against `pcsg_zone_quarters` and agree.
+- The three bits at 18-20 are **Accurate Seconds**, not a security or zone
+  field: "how much time should be added to the coarse seconds in 1/64-of-a-
+  minute increments", 0 to 6.5625 s, refining the time word's 7.5 s coarse
+  steps to within a second. This app derives seconds from the frame grid and
+  ignores the coarse field, so the trim has nothing to refine here. It is shown
+  as `ExtSec` after Mayhem, which named it for "extended seconds".
 - The time refers to the leading edge of the first bit of sync 1 of frame 0 of
   the current cycle, so the minute is the cycle's own four-minute boundary and
   a pager adds frame * 1.875 s itself. Mayhem's
   [PR #3368](https://github.com/portapack-mayhem/mayhem-firmware/pull/3368)
   reaches the same conclusion from ARIB STD-43A.
+
+**spra183 defines the system message word twice, incompatibly**, which is where
+the long-running "is the flag at 16 or at 20" question comes from. Table 2-7, in
+the signal-structure chapter, breaks `s4`-`s13` into a five-bit `Z`, the `L`
+flag, a don't-care, and three bits of `S`. Table 3-22, in the decoder chapter,
+gives the same word as a single **ten-bit `z` field over `s4`-`s13`** with a
+four-bit `A` replacing the `010X` subtype selector - no `L` and no `S` at all.
+
+Table 2-7 is the authority: chapter 3 describes what TI's decoder device reports
+over its serial interface, and it defers explicitly, "see section 2.5, FLEX
+local time and date, for detailed information about these block information
+words". Table 3-22 is an abbreviation that loses the subfields, not a rival
+definition of the air format. The tables are also not carefully proofed - table
+2-6 names the coarse seconds `S5 S4 S3` where table 3-22 names the same three
+bits `S2 S1 S0`, and table 2-6 prints a lowercase `m3` where `M3` belongs.
+
+But Table 3-22 is exactly the ten-bit field Mayhem's FLEX RX calls `biw_v2`, and
+it reads `(biw_v2 >> 9) & 1` - `s13`, word bit 20, the top bit of that `z`
+field. So reading the flag at bit 20 is not a mistake anyone invented from
+traffic; it is what Table 3-22 leads to.
 
 The 32 zone codes are TI's table 2-8, which `options_tz` and `flex_tz_table` in
 Mayhem both match: code 16 is reserved, and there is no code for GMT-12 or for

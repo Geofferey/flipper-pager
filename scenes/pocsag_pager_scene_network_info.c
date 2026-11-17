@@ -60,10 +60,18 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
 
     char text[24];
 
-    // Zone on the left of the top row, the offset the clock is actually on.
+    // Zone on the left of the top row, the offset the clock is actually on,
+    // with the daylight flag beside it as "UTC-8 | DST".
     if(app->filter.hud_show_zone) {
         if(have_clock && now.have_zone) {
-            pcsg_zone_format(now.zone_minutes, text, sizeof(text));
+            char zone[12];
+            pcsg_zone_format(now.zone_minutes, zone, sizeof(zone));
+            /*
+             * Daylight only, divider and all. The offset beside it is already
+             * the one in force, so standard time has nothing to add: an
+             * indicator always present tells you less than one that appears.
+             */
+            snprintf(text, sizeof(text), "%s%s", zone, now.standard_time ? "" : " | DST");
         } else {
             strlcpy(text, "No zone", sizeof(text));
         }

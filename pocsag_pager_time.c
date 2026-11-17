@@ -22,8 +22,9 @@ static uint32_t
         1000U;
     const uint32_t gps_second = gps_seconds % 3600U;
     if(hour) {
-        // BIW hour uses daylight time year-round; set L0 means standard time.
-        *hour = (timing->hour + gps_seconds / 3600U + 24U - timing->standard_time -
+        // Used as transmitted. The standard/daylight flag is read and
+        // reported, never applied.
+        *hour = (timing->hour + gps_seconds / 3600U + 24U -
                  (gps_second < PCSG_GPS_UTC_OFFSET_S)) %
                 24U;
     }
@@ -103,12 +104,10 @@ void pcsg_zone_format(int16_t minutes, char* out, size_t size) {
 }
 
 static bool pcsg_time_zone_minutes(const FlexFrameTiming* timing, int16_t* minutes) {
-    if(timing->zone >= 32U) return false;
-    // The networks name the zone's daylight offset and leave the code alone all
-    // year, so standard time is an hour back from it. Same correction the hour
-    // gets, and the same one Geofferey's Mayhem flex_rx fork applies.
-    *minutes = pcsg_zone_minutes(timing->zone) - (timing->standard_time ? 60 : 0);
-    return true;
+    // The code as transmitted. The zone and the flag riding with it are two
+    // things the network offers, shown as offered.
+    *minutes = pcsg_zone_minutes(timing->zone);
+    return timing->zone < 32U;
 }
 
 bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
@@ -129,6 +128,7 @@ bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
     out->second = sec % 60U;
     out->have_hour = timing.have_hour;
     out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes);
+    out->standard_time = timing.standard_time;
 
     /*
      * The HUD settings decide where each part actually comes from. The
