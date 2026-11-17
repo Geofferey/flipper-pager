@@ -35,6 +35,7 @@ typedef enum {
     POCSAGPagerViewSubmenu,
     POCSAGPagerViewReceiver,
     POCSAGPagerViewReceiverInfo,
+    POCSAGPagerViewNetworkInfo,
     POCSAGPagerViewWidget,
     POCSAGPagerViewNumberInput,
     POCSAGPagerViewTextInput,

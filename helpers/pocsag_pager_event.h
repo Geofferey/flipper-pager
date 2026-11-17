@@ -37,4 +37,7 @@ typedef enum {
     /** Left/right: the next or previous message to the same address. */
     PCSGCustomEventViewInfoNextAddress,
     PCSGCustomEventViewInfoPrevAddress,
+
+    /** Select on the Network screen: swap the clock between NET and RTC. */
+    PCSGCustomEventViewNetworkSource,
 } PCSGCustomEvent;

@@ -18,6 +18,7 @@
 #include <notification/notification_messages.h>
 #include "views/pocsag_pager_receiver.h"
 #include "views/pocsag_pager_receiver_info.h"
+#include "views/pocsag_pager_network_info.h"
 #include "pocsag_pager_history.h"
 #include "flex_sampler.h"
 #include "pocsag_pager_settings.h"
@@ -69,6 +70,10 @@ struct POCSAGPagerApp {
     TextInput* text_input;
     PCSGReceiver* pcsg_receiver;
     PCSGReceiverInfo* pcsg_receiver_info;
+    PCSGNetworkInfo* pcsg_network_info;
+    /** Select on the Network screen forces the Flipper's own clock. Lives for
+     *  as long as that screen is open, not in the settings. */
+    bool network_info_force_rtc;
     PCSGLock lock;
     SubGhzSetting* setting;
     PCSGFilterSettings filter;
@@ -150,6 +155,9 @@ typedef struct {
     /** Minutes and seconds come from the frame grid and are always known once
      *  a frame is; the hour needs a clock word and may not have arrived. */
     bool have_hour;
+    /** The hour shown is the Flipper's, not the network's - either chosen in
+     *  the HUD options or fallen back to while no clock word has arrived. */
+    bool hour_local;
     int16_t zone_minutes;
     bool have_zone;
     /** The zone word's L flag: set is standard time, clear is daylight. Only

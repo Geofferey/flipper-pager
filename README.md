@@ -244,7 +244,18 @@ and coverage zone from the SSID1 word, the country code from SSID2, the
 standard/daylight flag beside the zone as `UTC-8 | DST` - divider and all shown
 only when daylight is advertised, the offset beside it already being the one in
 force - the roaming flag from the frame information word, the frame and cycle, the count of
-messages held this session, and the accurate-seconds trim. The message count is
+messages held this session, and the accurate-seconds trim.
+
+`NET` or `RTC` to the right of the date says which clock the hour on screen
+actually came from, and **OK swaps between them**: `RTC` shows the Flipper's own
+time and date whatever the HUD options are set to, which is also the one reading
+that needs no reception, so it works with nothing on the air. The override lasts
+while the screen is open and is forgotten on the way out - it is a look at the
+other clock, not a change of settings, and it leaves the receiver's status-bar
+clock alone. `RTC` also appears without pressing anything whenever the hour is
+the Flipper's already, which `Hour: Hybrid` does until a clock word arrives.
+
+The message count is
 the same one the status bar carries, so the two always agree - including that it
 falls as well as rises, the history being a rolling window. A field reads `-` until a word carrying it arrives, so
 a network that never sends one is told apart from one that sends it as zero.

@@ -165,6 +165,7 @@ bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
     }
     const bool local_hour = app->filter.hud_hour == PCSGHudHourLocal ||
                             (app->filter.hud_hour == PCSGHudHourHybrid && !out->have_hour);
+    out->hour_local = local_hour;
     if(local_hour) {
         out->hour = local.hour;
         // Taken from the Flipper, so it is known, whatever the network sent.

@@ -162,6 +162,13 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
         app->view_dispatcher,
         POCSAGPagerViewReceiverInfo,
         pcsg_view_receiver_info_get_view(app->pcsg_receiver_info));
+
+    // Network Info
+    app->pcsg_network_info = pcsg_view_network_info_alloc();
+    view_dispatcher_add_view(
+        app->view_dispatcher,
+        POCSAGPagerViewNetworkInfo,
+        pcsg_view_network_info_get_view(app->pcsg_network_info));
 #endif
 
     //init setting
@@ -436,6 +443,10 @@ void pocsag_pager_app_free(POCSAGPagerApp* app) {
     // Receiver Info
     view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewReceiverInfo);
     pcsg_view_receiver_info_free(app->pcsg_receiver_info);
+
+    // Network Info
+    view_dispatcher_remove_view(app->view_dispatcher, POCSAGPagerViewNetworkInfo);
+    pcsg_view_network_info_free(app->pcsg_network_info);
 #endif
 
     //setting
