@@ -24,6 +24,11 @@
 // Inset from either edge for the fields that flank the centre.
 #define PCSG_NETWORK_LEFT_X  2
 #define PCSG_NETWORK_RIGHT_X 126
+// Strike-through height above the baseline, about the middle of a capital in
+// FontSecondary. Nudge if the line sits high or low on the glyphs.
+#define PCSG_NETWORK_STRIKE_RISE 3
+// Between the zone and the flag riding with it.
+#define PCSG_NETWORK_DIVIDER " | "
 
 struct PCSGNetworkInfo {
     View* view;
@@ -56,8 +61,31 @@ static void pcsg_view_network_info_draw(Canvas* canvas, PCSGNetworkInfoFields* m
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
 
-    pcsg_view_network_info_str(
-        canvas, PCSG_NETWORK_LEFT_X, PCSG_NETWORK_TOP_Y, AlignLeft, FontSecondary, model->zone);
+    /*
+     * Zone, then the daylight flag behind a divider. Laid out here rather than
+     * composed into one string so the flag's own left edge and width are
+     * known, which is what the strike-through needs.
+     */
+    canvas_set_font(canvas, FontSecondary);
+    uint8_t x = PCSG_NETWORK_LEFT_X;
+    if(model->zone[0]) {
+        canvas_draw_str_aligned(
+            canvas, x, PCSG_NETWORK_TOP_Y, AlignLeft, AlignBottom, model->zone);
+        x = (uint8_t)(x + canvas_string_width(canvas, model->zone));
+    }
+    if(model->zone_flag[0]) {
+        canvas_draw_str_aligned(
+            canvas, x, PCSG_NETWORK_TOP_Y, AlignLeft, AlignBottom, PCSG_NETWORK_DIVIDER);
+        x = (uint8_t)(x + canvas_string_width(canvas, PCSG_NETWORK_DIVIDER));
+        canvas_draw_str_aligned(
+            canvas, x, PCSG_NETWORK_TOP_Y, AlignLeft, AlignBottom, model->zone_flag);
+        if(model->zone_flag_struck) {
+            const uint8_t width = canvas_string_width(canvas, model->zone_flag);
+            const uint8_t y = PCSG_NETWORK_TOP_Y - PCSG_NETWORK_STRIKE_RISE;
+            if(width) canvas_draw_line(canvas, x, y, (uint8_t)(x + width - 1U), y);
+        }
+    }
+
     pcsg_view_network_info_str(
         canvas, PCSG_NETWORK_RIGHT_X, PCSG_NETWORK_TOP_Y, AlignRight, FontSecondary, model->roam);
 

@@ -73,14 +73,20 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
     // with the daylight flag beside it as "UTC-8 | DST".
     if(app->filter.hud_show_zone) {
         if(have_clock && now.have_zone) {
-            char zone[12];
-            pcsg_zone_format(now.zone_minutes, zone, sizeof(zone));
+            pcsg_zone_format(now.zone_minutes, f.zone, sizeof(f.zone));
             /*
-             * Daylight only, divider and all. The offset beside it is already
-             * the one in force, so standard time has nothing to add: an
-             * indicator always present tells you less than one that appears.
+             * Daylight only. The offset beside it is already the one in force,
+             * so standard time has nothing to add: an indicator always present
+             * tells you less than one that appears.
+             *
+             * Struck through when the DST setting is overriding it, which is
+             * the one case where the network advertises daylight and the hour
+             * on show is not daylight at all.
              */
-            snprintf(f.zone, sizeof(f.zone), "%s%s", zone, now.standard_time ? "" : " | DST");
+            if(!now.standard_time) {
+                strlcpy(f.zone_flag, "DST", sizeof(f.zone_flag));
+                f.zone_flag_struck = now.dst_hours != 0;
+            }
         } else {
             strlcpy(f.zone, "No zone", sizeof(f.zone));
         }

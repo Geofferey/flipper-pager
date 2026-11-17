@@ -244,7 +244,9 @@ as the centre piece: the zone and the offset in force, the date, the local ID
 and coverage zone from the SSID1 word, the country code from SSID2, the
 standard/daylight flag beside the zone as `UTC-8 | DST` - divider and all shown
 only when daylight is advertised, the offset beside it already being the one in
-force - the roaming flag from the frame information word, the frame and cycle, the count of
+force, and **struck through when the `DST` setting is overriding it**, which is
+the one case where a network advertises daylight and the hour on show is not
+daylight - the roaming flag from the frame information word, the frame and cycle, the count of
 messages held this session, and the accurate-seconds trim.
 
 The date carries which clock the hour came from beside it, as

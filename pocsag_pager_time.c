@@ -160,6 +160,7 @@ bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
     out->second = sec % 60U;
     out->have_hour = timing.have_hour;
     out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes, dst_hours);
+    out->dst_hours = dst_hours;
     out->standard_time = timing.standard_time;
 
     /*

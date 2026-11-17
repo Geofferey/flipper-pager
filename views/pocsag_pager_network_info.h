@@ -17,8 +17,13 @@ typedef void (*PCSGNetworkInfoCallback)(PCSGCustomEvent event, void* context);
  * words and the settings are read there, never from the draw callback.
  */
 typedef struct {
-    /** Top row: zone and daylight flag on the left, roaming on the right. */
-    char zone[24];
+    /** Top row: zone and daylight flag on the left, roaming on the right.
+     *  The flag is drawn after the zone behind a divider, and struck through
+     *  when the DST setting is overriding it - the hour on show is then not
+     *  the one being advertised. */
+    char zone[16];
+    char zone_flag[8];
+    bool zone_flag_struck;
     char roam[8];
     /** Centre. Big digits, so `clock` carries only digits and colons. */
     char clock[16];

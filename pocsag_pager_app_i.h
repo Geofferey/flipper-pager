@@ -160,6 +160,10 @@ typedef struct {
     bool hour_local;
     int16_t zone_minutes;
     bool have_zone;
+    /** Hours the DST setting moved the hour and the offset by, so a caller can
+     *  say that the flag below is being overridden. Zero when the setting and
+     *  the network agree, or when nothing is being corrected. */
+    int8_t dst_hours;
     /** The zone word's L flag: set is standard time, clear is daylight. Only
      *  meaningful alongside have_zone, the flag riding in the same word. */
     bool standard_time;
