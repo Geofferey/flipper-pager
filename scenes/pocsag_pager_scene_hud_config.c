@@ -12,6 +12,7 @@
 typedef enum {
     PCSGHudConfigDate,
     PCSGHudConfigYear,
+    PCSGHudConfigYearEra,
     PCSGHudConfigHour,
     PCSGHudConfigMinute,
     PCSGHudConfigOffset,
@@ -37,6 +38,9 @@ static const char* const hud_ticker_text[PCSGHudTickerCount] = {
     "Clock",
     "Off"};
 static const char* const hud_show_text[] = {"Hide", "Show"};
+// Off: 1994 + field, as transmitted. On: that plus whole 32-year eras, up to
+// the latest one the Flipper's own clock says has begun.
+static const char* const hud_era_text[] = {"Off", "On"};
 static const char* const hud_freq_text[PCSGHudFreqCount] = {"Discard", "Keep"};
 
 #define PCSG_HUD_TICKER_SECS_COUNT \
@@ -64,6 +68,9 @@ static const PCSGHudRow pcsg_hud_rows[] = {
         {"Day/Month:", PCSG_HUD_FIELD(filter.hud_date), PCSGHudSourceCount, hud_source_text},
     [PCSGHudConfigYear] =
         {"Year:", PCSG_HUD_FIELD(filter.hud_year), PCSGHudSourceCount, hud_source_text},
+    // How the network's year field is read, so it sits under the year's source.
+    [PCSGHudConfigYearEra] =
+        {"Year era:", PCSG_HUD_FIELD(filter.hud_year_era), COUNT_OF(hud_era_text), hud_era_text},
     [PCSGHudConfigHour] =
         {"Hour:", PCSG_HUD_FIELD(filter.hud_hour), PCSGHudHourCount, hud_hour_text},
     [PCSGHudConfigMinute] =

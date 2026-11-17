@@ -304,6 +304,9 @@ typedef struct {
      *  and month right and only the year wrong, so they are chosen apart. */
     PCSGHudSource hud_date;
     PCSGHudSource hud_year;
+    /** Resolve the year field's 32-year era against the Flipper's clock,
+     *  rather than reading it as a year in 1994-2025 outright. */
+    bool hud_year_era;
     /** Local, Network, or Network falling back to Local until an hour word. */
     PCSGHudHour hud_hour;
     PCSGHudSource hud_minute;

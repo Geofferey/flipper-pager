@@ -326,6 +326,8 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->filter.dst = PCSGDstOff;
     app->filter.hud_date = PCSGHudSourceNetwork;
     app->filter.hud_year = PCSGHudSourceNetwork;
+    // Off: the field at face value, which is what the app has always shown.
+    app->filter.hud_year_era = false;
     app->filter.hud_hour = PCSGHudHourHybrid;
     app->filter.hud_minute = PCSGHudSourceNetwork;
     app->filter.hud_offset_hours = 0;

@@ -13,18 +13,29 @@
 #define PCSG_NETWORK_TICK_MS 500U
 
 /*
- * The five bit year field is an absolute index into 1994-2025, not modulo 32
- * arithmetic rolling on into a later era: nothing on the air names an era, so
- * a receiver cannot resolve one. A transmitter with a later year sends that
- * year's calendar twin instead, which is what this app's transmitter does.
+ * The five bit year field counts from 1994, and TI table 2-5 defines it as
+ * modulo arithmetic: 1994-2025, then 2026-2057, and so on. Nothing on the air
+ * names which era is in force, so the two readings are a choice rather than a
+ * decode, and `Year era` makes it.
  *
- * This did resolve an era, against the Flipper's own clock, which turned a
- * network sending 2007 into 2039. Networks really do send years that far back.
+ * Off takes the field at face value, 1994 + field, naming a year in the first
+ * window and nothing past it. On resolves an era against the Flipper's own
+ * clock, taking the **latest era that has already begun** rather than the
+ * nearest: a network sending a stale 2007 reads as 2007, where the nearest
+ * would call it a future 2039. Observed networks need both answers - one sends
+ * a genuinely stale date, another today's day and month with the year wrapped
+ * to 1994, which is 2026 an era on.
+ *
  * The date is its own word, nothing to do with the time of day: a network can
  * carry an accurate time and a date years out, and one does.
  */
-static uint16_t pocsag_pager_scene_network_info_year(uint8_t field) {
-    return 1994U + (field & 31U);
+static uint16_t pocsag_pager_scene_network_info_year(
+    uint8_t field,
+    uint16_t local_year,
+    bool era) {
+    const uint16_t base = 1994U + (field & 31U);
+    if(!era || base >= local_year) return base;
+    return (uint16_t)(base + ((local_year - base) / 32U) * 32U);
 }
 
 static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
@@ -115,7 +126,8 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
                 year_text,
                 sizeof(year_text),
                 "%u",
-                pocsag_pager_scene_network_info_year(info.year_field));
+                pocsag_pager_scene_network_info_year(
+                    info.year_field, local.year, app->filter.hud_year_era));
         } else {
             strlcpy(year_text, "????", sizeof(year_text));
         }
