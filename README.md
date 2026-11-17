@@ -256,6 +256,8 @@ while the screen is open and is forgotten on the way out - it is a look at the
 other clock, not a change of settings, and it leaves the receiver's status-bar
 clock alone. `RTC` also appears without pressing anything whenever the hour is
 the Flipper's already, which `Hour: Hybrid` does until a clock word arrives.
+`Source` in the HUD options hides the indicator; OK still swaps the clock over,
+it just stops saying which one is on show.
 
 The message count is
 the same one the status bar carries, so the two always agree - including that it

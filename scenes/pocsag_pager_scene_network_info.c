@@ -99,9 +99,11 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
      * Which clock the hour came from joins it as "1994-11-17 | NET", the same
      * shape the zone row uses for its daylight flag, and centred under the
      * clock so the two read as one. With the date row off it stands alone;
-     * with no clock at all there is no hour to have a source.
+     * with no clock at all there is no hour to have a source. Hiding it stops
+     * it being said, not OK swapping the clock over.
      */
     const char* source = now.hour_local ? "RTC" : "NET";
+    const bool show_source = have_clock && app->filter.hud_show_source;
     if(app->filter.hud_show_date) {
         // Year and day/month are chosen apart, so they are built apart: the
         // networks seen so far get one right and the other wrong.
@@ -135,12 +137,12 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
             snprintf(date_text, sizeof(date_text), "%s-%s", year_text, day_text);
         }
 
-        if(have_clock) {
+        if(show_source) {
             snprintf(f.date, sizeof(f.date), "%s | %s", date_text, source);
         } else {
             strlcpy(f.date, date_text, sizeof(f.date));
         }
-    } else if(have_clock) {
+    } else if(show_source) {
         strlcpy(f.date, source, sizeof(f.date));
     }
 

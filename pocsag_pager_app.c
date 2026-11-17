@@ -335,6 +335,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     app->filter.hud_ticker_secs = PCSG_HUD_TICKER_SECS_DEFAULT;
     app->filter.hud_show_zone = true;
     app->filter.hud_show_date = true;
+    app->filter.hud_show_source = true;
     app->filter.hud_show_ssid1 = true;
     app->filter.hud_show_ssid2 = true;
     app->filter.hud_show_roaming = true;

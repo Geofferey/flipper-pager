@@ -309,6 +309,9 @@ typedef struct {
     uint8_t hud_ticker_secs;
     bool hud_show_zone;
     bool hud_show_date;
+    /** `NET`/`RTC` beside the date. Hiding it leaves OK still swapping the
+     *  clock over, just without saying which one is on show. */
+    bool hud_show_source;
     bool hud_show_ssid1;
     bool hud_show_ssid2;
     bool hud_show_roaming;

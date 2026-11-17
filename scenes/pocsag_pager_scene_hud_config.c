@@ -20,6 +20,7 @@ typedef enum {
     PCSGHudConfigTickerSecs,
     PCSGHudConfigZone,
     PCSGHudConfigShowDate,
+    PCSGHudConfigShowSource,
     PCSGHudConfigSsid1,
     PCSGHudConfigSsid2,
     PCSGHudConfigRoaming,
@@ -82,6 +83,12 @@ static const PCSGHudRow pcsg_hud_rows[] = {
     [PCSGHudConfigShowDate] =
         {"Date row:",
          PCSG_HUD_FIELD(filter.hud_show_date),
+         COUNT_OF(hud_show_text),
+         hud_show_text},
+    // Rides with the date row, so it sits beside it here.
+    [PCSGHudConfigShowSource] =
+        {"Source:",
+         PCSG_HUD_FIELD(filter.hud_show_source),
          COUNT_OF(hud_show_text),
          hud_show_text},
     [PCSGHudConfigSsid1] =

@@ -235,6 +235,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"HudTickerSecs", PCSG_HUD_TICKER_SECS_MAX, PCSG_FIELD(filter.hud_ticker_secs), PCSGSetU32},
     {"HudZone", 0, PCSG_FIELD(filter.hud_show_zone), PCSGSetBool},
     {"HudShowDate", 0, PCSG_FIELD(filter.hud_show_date), PCSGSetBool},
+    {"HudShowSource", 0, PCSG_FIELD(filter.hud_show_source), PCSGSetBool},
     {"HudSsid1", 0, PCSG_FIELD(filter.hud_show_ssid1), PCSGSetBool},
     {"HudSsid2", 0, PCSG_FIELD(filter.hud_show_ssid2), PCSGSetBool},
     {"HudRoaming", 0, PCSG_FIELD(filter.hud_show_roaming), PCSGSetBool},
