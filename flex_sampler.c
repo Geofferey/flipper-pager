@@ -612,7 +612,13 @@ void flex_sampler_start(FlexSampler* instance) {
     instance->last_symbol = 0;
     instance->last_symbol_valid = false;
     subghz_protocol_decoder_flex_reset_stats(instance->decoder);
-    instance->decoder->protocol->decoder->reset(instance->decoder);
+    /*
+     * Decode state only. The full reset would take the clock and system words
+     * with it, which would undo HUD "Freq switch: Keep" moments after pcsg_rx
+     * decided to honour it - starting a session is not the place that choice
+     * is made.
+     */
+    subghz_protocol_decoder_flex_reset_decode(instance->decoder);
     // Before the GPIOs: this takes the bus, which reconfigures the shared pin.
     flex_sampler_set_gdo1(instance, CC1101IocfgRxHardData0);
     furi_hal_gpio_init(instance->data_msb, GpioModeInput, GpioPullNo, GpioSpeedVeryHigh);

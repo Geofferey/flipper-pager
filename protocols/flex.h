@@ -152,6 +152,10 @@ void subghz_protocol_decoder_flex_get_page_info(void* context, FlexPageInfo* inf
 void subghz_protocol_decoder_flex_get_stats(void* context, FlexDecoderStats* stats);
 /** Clear clock metadata with RX stopped; page/fragment state is untouched. */
 void subghz_protocol_decoder_flex_reset_frame_timing(void* context);
+/** The converse: clear sync, framing and page state and leave the clock and
+ *  system words standing, for a session starting on a channel whose reading
+ *  is being carried over. */
+void subghz_protocol_decoder_flex_reset_decode(void* context);
 /** Copy the most recent FIW timing; false until a valid FIW has arrived. */
 bool subghz_protocol_decoder_flex_get_frame_timing(void* context, FlexFrameTiming* timing);
 /** Copy what the network has said about itself; false until it has said

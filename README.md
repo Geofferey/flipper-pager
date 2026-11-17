@@ -278,9 +278,13 @@ year field is read - see [the year era](#the-year-era) - and does nothing when
 the year is taken locally.
 `Offset` shifts the displayed hour by up to twelve hours either
 way, for a network whose hour is simply wrong. `Freq switch` decides what
-becomes of the reading when the channel changes: `Discard` throws it away, as
-the app always did, and `Keep` carries it over - useful across channels of one
-operator, misleading across operators, so it is yours to pick. `Ticker` sets
+becomes of the reading when the channel changes from the settings menu:
+`Discard` throws it away, as the app always did, and `Keep` carries it over,
+each field standing until the new network sends a word that replaces it - so a
+channel that never sends a country code leaves the last one showing. Useful
+across channels of one operator, misleading across operators, so it is yours to
+pick. An input overrun still clears the reading whichever is set, the decoder
+having lost its place in the frame grid. `Ticker` sets
 whether the status
 bar rotates between the frequency and the clock, holds one of them, or stays
 off, and `Ticker secs` how long it holds each. The rest show or hide the

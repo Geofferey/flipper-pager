@@ -397,18 +397,28 @@ void subghz_protocol_decoder_flex_free(void* context) {
     free(instance);
 }
 
-void subghz_protocol_decoder_flex_reset(void* context) {
+/*
+ * Sync, symbol clock, framing and page state: everything that belongs to the
+ * signal currently being decoded, and nothing that the network has said about
+ * itself. Kept apart so a receive session can start clean without dropping a
+ * reading the HUD has been told to keep across a change of channel.
+ */
+void subghz_protocol_decoder_flex_reset_decode(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderFlex* instance = context;
     flex_return_to_sync(instance);
     flex_reset_clock(instance);
-    subghz_protocol_decoder_flex_reset_frame_timing(instance);
     instance->capcode = 0;
     instance->page_type = 0;
     instance->fragment = 0;
     instance->phase = 'A';
     furi_string_reset(instance->generic.result_ric);
     furi_string_reset(instance->generic.result_msg);
+}
+
+void subghz_protocol_decoder_flex_reset(void* context) {
+    subghz_protocol_decoder_flex_reset_decode(context);
+    subghz_protocol_decoder_flex_reset_frame_timing(context);
 }
 
 static uint16_t flex_sync_check(uint64_t buffer) {
