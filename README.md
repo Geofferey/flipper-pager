@@ -146,8 +146,9 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   frequency, modulation, per-kind FLEX page visibility, duplicates,
   encrypted messages, logging, FLEX time sync, receive/decode LED indicators
   and a capcode filter. The receive activity blink can be disabled or set to
-  cyan, blue, green, yellow, magenta, red or white; the successful-decode green
-  blink can be disabled independently. Settings are saved to
+  cyan, blue, green, yellow, magenta, red or white, and keeps going for as long
+  as the radio is listening, whichever screen is open; the successful-decode
+  green blink can be disabled independently. Settings are saved to
   `/ext/apps_data/flipper_pager/settings.txt` and restored at startup.
 
 **Alert Tone** offers `Default` (the existing short beep) and `Classic`.

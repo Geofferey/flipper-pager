@@ -357,12 +357,8 @@ bool pocsag_pager_scene_receiver_on_event(void* context, SceneManagerEvent event
             pcsg_receiver_rssi(
                 app->pcsg_receiver, subghz_devices_get_rssi(app->txrx->radio_device));
         }
-
-        if(app->txrx->txrx_state == PCSGTxRxStateRx && app->filter.receive_led) {
-            notification_message(
-                app->notifications,
-                pcsg_led_blink_sequence(app->filter.receive_led_color));
-        }
+        // The receive blink is driven from the app tick, so it keeps going
+        // while another scene is open.
     }
     return consumed;
 }

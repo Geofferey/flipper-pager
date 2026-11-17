@@ -7,6 +7,7 @@
 #include <lib/toolbox/stream/stream.h>
 #include "protocols/protocol_items.h"
 #include "protocols/flex.h"
+#include "pocsag_pager_led.h"
 
 static bool pocsag_pager_app_custom_event_callback(void* context, uint32_t event) {
     furi_assert(context);
@@ -25,6 +26,16 @@ static void pocsag_pager_app_tick_event_callback(void* context) {
     POCSAGPagerApp* app = context;
 #ifndef PCSG_TX_APP
     pcsg_classic_alert_tick(app);
+    /*
+     * The receive blink says the radio is listening, which has nothing to do
+     * with what is on screen, so it is driven here rather than from the
+     * message list's tick - only the open scene is ticked, and the light used
+     * to go out on the way to settings, a message or the network screen.
+     */
+    if(app->txrx->txrx_state == PCSGTxRxStateRx && app->filter.receive_led) {
+        notification_message(
+            app->notifications, pcsg_led_blink_sequence(app->filter.receive_led_color));
+    }
 #endif
     scene_manager_handle_tick_event(app->scene_manager);
 }
