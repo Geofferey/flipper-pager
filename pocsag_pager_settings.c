@@ -228,6 +228,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"HudDate", PCSGHudSourceCount - 1, PCSG_FIELD(filter.hud_date), PCSGSetU32},
     {"HudHour", PCSGHudHourCount - 1, PCSG_FIELD(filter.hud_hour), PCSGSetU32},
     {"HudMinute", PCSGHudSourceCount - 1, PCSG_FIELD(filter.hud_minute), PCSGSetU32},
+    {"Dst", PCSGDstCount - 1, PCSG_FIELD(filter.dst), PCSGSetU32},
     // Signed, so it rides the same path the frequency correction does.
     {"HudOffsetHours", PCSG_HUD_OFFSET_MAX, PCSG_FIELD(filter.hud_offset_hours), PCSGSetI8},
     {"HudTicker", PCSGHudTickerCount - 1, PCSG_FIELD(filter.hud_ticker), PCSGSetU32},

@@ -314,6 +314,9 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     // The network's clock is what the HUD is for, so that is where it starts;
     // the hour falls back to the Flipper rather than reading "--" while it
     // waits for a clock word.
+    // Off subtracts only from a network advertising daylight time, so it is
+    // also the right standing value where daylight saving is never observed.
+    app->filter.dst = PCSGDstOff;
     app->filter.hud_date = PCSGHudSourceNetwork;
     app->filter.hud_year = PCSGHudSourceNetwork;
     app->filter.hud_hour = PCSGHudHourHybrid;

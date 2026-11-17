@@ -14,21 +14,41 @@
  * The RTC sync and the receiver's status bar both need this, so it lives here
  * rather than in each of them.
  */
-static uint32_t
-    pcsg_time_frame_second(const FlexFrameTiming* timing, uint32_t age_ms, uint8_t* hour) {
+static uint32_t pcsg_time_frame_second(
+    const FlexFrameTiming* timing,
+    uint32_t age_ms,
+    uint8_t* hour,
+    bool standard_shift) {
     // FIW publication marks this frame's start; elapsed time includes reception.
     const uint32_t gps_seconds =
         ((uint32_t)timing->cycle * 240000U + (uint32_t)timing->frame * 1875U + age_ms + 500U) /
         1000U;
     const uint32_t gps_second = gps_seconds % 3600U;
     if(hour) {
-        // Used as transmitted. The standard/daylight flag is read and
-        // reported, never applied.
-        *hour = (timing->hour + gps_seconds / 3600U + 24U -
+        // An hour off when the gate says the sent hour is daylight-pinned.
+        *hour = (timing->hour + gps_seconds / 3600U + 24U - (standard_shift ? 1U : 0U) -
                  (gps_second < PCSG_GPS_UTC_OFFSET_S)) %
                 24U;
     }
     return (gps_second + 3600U - PCSG_GPS_UTC_OFFSET_S) % 3600U;
+}
+
+/*
+ * Whether this frame's hour and zone offset lose an hour, because the network
+ * is advertising daylight time in a season that is not on it.
+ *
+ * The network knows which kind of time it is sending; only the receiver knows
+ * whether daylight saving is actually in force. So DST: Off is an override,
+ * and the one case it acts on is a network advertising daylight while it is
+ * not. Everything else is taken as transmitted.
+ *
+ * The hour and the zone offset move together or not at all: a UTC-8 label over
+ * a clock still reading -7 is worse than either answer on its own.
+ */
+static bool pcsg_time_standard_shift(const POCSAGPagerApp* app, const FlexFrameTiming* timing) {
+    if(app->filter.dst != PCSGDstOff) return false;
+    // The zone word carries the flag, so without one nothing is advertised.
+    return timing->zone < 32U && !timing->standard_time;
 }
 
 /*
@@ -103,10 +123,11 @@ void pcsg_zone_format(int16_t minutes, char* out, size_t size) {
     }
 }
 
-static bool pcsg_time_zone_minutes(const FlexFrameTiming* timing, int16_t* minutes) {
-    // The code as transmitted. The zone and the flag riding with it are two
-    // things the network offers, shown as offered.
-    *minutes = pcsg_zone_minutes(timing->zone);
+static bool
+    pcsg_time_zone_minutes(const FlexFrameTiming* timing, int16_t* minutes, bool standard_shift) {
+    // The code as transmitted, less the hour the clock itself loses, so the
+    // label and the digits agree about which offset is in force.
+    *minutes = pcsg_zone_minutes(timing->zone) - (standard_shift ? 60 : 0);
     return timing->zone < 32U;
 }
 
@@ -123,11 +144,12 @@ bool pcsg_time_network(POCSAGPagerApp* app, PCSGNetworkTime* out) {
      * are known as soon as any frame is, with no clock word involved. Only the
      * hour needs one, and only the hour waits for it.
      */
-    const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, &out->hour);
+    const bool shift = pcsg_time_standard_shift(app, &timing);
+    const uint32_t sec = pcsg_time_frame_second(&timing, age_ms, &out->hour, shift);
     out->minute = sec / 60U;
     out->second = sec % 60U;
     out->have_hour = timing.have_hour;
-    out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes);
+    out->have_zone = pcsg_time_zone_minutes(&timing, &out->zone_minutes, shift);
     out->standard_time = timing.standard_time;
 
     /*
@@ -169,7 +191,10 @@ void pcsg_time_sync(POCSAGPagerApp* app) {
 
     const bool full = app->filter.time_sync == PCSGTimeSyncFull && timing.clock_valid;
     uint8_t network_hour;
-    const int32_t second = (int32_t)pcsg_time_frame_second(&timing, age_ms, &network_hour);
+    // The same shift the screen gets: Full sync would otherwise write an hour
+    // the HUD never showed.
+    const int32_t second = (int32_t)pcsg_time_frame_second(
+        &timing, age_ms, &network_hour, pcsg_time_standard_shift(app, &timing));
 
     DateTime target;
     furi_hal_rtc_get_datetime(&target);

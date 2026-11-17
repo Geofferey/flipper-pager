@@ -184,6 +184,24 @@ typedef enum {
 } PCSGHudHour;
 
 /*
+ * Whether daylight saving is in force here, which overrides what a network
+ * says about itself.
+ *
+ * A network advertising daylight time (word bit 16 clear) while this is Off is
+ * an hour fast, so the hour comes off. Nothing else moves the clock: a network
+ * that advertises standard time is taken as sent, and On accepts whatever is
+ * advertised. Observed networks are honest about this flag, so the only thing
+ * they cannot know is the season - which is what this supplies.
+ *
+ * Needs changing when the clocks do. See README.md.
+ */
+typedef enum {
+    PCSGDstOff,
+    PCSGDstOn,
+    PCSGDstCount,
+} PCSGDst;
+
+/*
  * What becomes of the HUD when the channel changes. A new channel is usually
  * a different network, whose zone, date and system words say nothing about the
  * one just left - but they are often the same operator, and seeing a reading
@@ -245,6 +263,9 @@ typedef struct {
     PCSGLedColor decode_led_color;
     // Sync MM:SS, or set HH:MM:SS once the network hour is known.
     PCSGTimeSync time_sync;
+    /** Daylight saving here, overriding what a network advertises. Sits with
+     *  Time sync rather than the HUD because it reaches the RTC too. */
+    PCSGDst dst;
     PCSGSound signal_sound;
     PCSGToneVolume tone_volume;
     PCSGTonePitch tone_pitch;

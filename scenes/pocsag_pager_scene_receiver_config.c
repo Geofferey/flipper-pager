@@ -17,6 +17,7 @@ enum PCSGSettingIndex {
     PCSGSettingIndexReceiveLed,
     PCSGSettingIndexDecodeLed,
     PCSGSettingIndexTimeSync,
+    PCSGSettingIndexDst,
     PCSGSettingIndexSignalSound,
     PCSGSettingIndexToneVolume,
     PCSGSettingIndexTonePitch,
@@ -81,6 +82,13 @@ const char* const time_sync_text[PCSGTimeSyncCount] = {
     "Off",
     "MM:SS",
     "HH:MM:SS",
+};
+
+// Daylight saving here, not on the network. Off takes an hour off a network
+// that advertises daylight time; On accepts whatever it advertises.
+const char* const dst_text[PCSGDstCount] = {
+    "Off",
+    "On",
 };
 
 #define LED_SELECTION_COUNT (PCSGLedColorCount + 1U)
@@ -399,6 +407,9 @@ static const PCSGConfigRow pcsg_config_rows[] = {
     [PCSGSettingIndexTimeSync] =
         {"Time sync:", time_sync_text, PCSG_ROW(filter.time_sync), 0, PCSGTimeSyncCount,
          PCSGRowEnum, PCSGSideTimeSync},
+    // Resyncs like the row above: it changes the hour sync would write.
+    [PCSGSettingIndexDst] =
+        {"DST:", dst_text, PCSG_ROW(filter.dst), 0, PCSGDstCount, PCSGRowEnum, PCSGSideTimeSync},
     // The speaker is set up when receiving starts, so these restart the radio.
     [PCSGSettingIndexSignalSound] =
         {"Signal Sound:", signal_sound_text, PCSG_ROW(filter.signal_sound), 0, PCSGSoundCount,
@@ -603,6 +614,7 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     pcsg_config_row_add(app, PCSGSettingIndexReceiveLed);
     pcsg_config_row_add(app, PCSGSettingIndexDecodeLed);
     pcsg_config_row_add(app, PCSGSettingIndexTimeSync);
+    pcsg_config_row_add(app, PCSGSettingIndexDst);
     pcsg_config_row_add(app, PCSGSettingIndexSignalSound);
     pcsg_config_row_add(app, PCSGSettingIndexToneVolume);
     pcsg_config_row_add(app, PCSGSettingIndexTonePitch);

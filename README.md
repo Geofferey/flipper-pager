@@ -268,7 +268,9 @@ whether the status
 bar rotates between the frequency and the clock, holds one of them, or stays
 off, and `Ticker secs` how long it holds each. The rest show or hide the
 individual Network screen fields. All of it is display only: the log keeps
-timestamping from the Flipper's own clock whatever is set here.
+timestamping from the Flipper's own clock whatever is set here. The one clock
+setting that does reach the RTC is `DST`, which lives with `Time sync` rather
+than here.
 
 A reading stays once taken. The clock keeps running from the last trusted
 frame, and the zone, date and system words hold until the network replaces
@@ -290,9 +292,10 @@ The field shown as `ExtSec` is the spec's **Accurate Seconds**, bits 18-20 of
 the system message word, and the standard/daylight flag `L` is bit 16. The
 receiver read that flag at bit 20 until the TI tables were read properly: bit 20
 is the top bit of Accurate Seconds, so the old reading turned a trim of 4 or more
-into a standard-time hour - see
-[the standard/daylight flag](#the-standarddaylight-flag). Accurate Seconds says
-how much to add to the
+into a standard-time hour. That happened to give the right time on every
+transmitter to hand, which kept it alive for a while - see
+[DST](#dst-and-why-the-receiver-overrides-the-network) - but it is not the flag
+and is no longer applied. Accurate Seconds says how much to add to the
 *coarse* seconds of the time word, in 1/64-minute (0.9375 s) steps, trimming
 those 7.5 s steps to within a second. This app never reads the coarse seconds -
 continuous frame timing supplies the minutes and seconds - so there is nothing
@@ -404,24 +407,63 @@ The time BIW supplies the hour; SysInfo subtype 4/5 supplies the
 standard/daylight flag. The BIWs' coarse/accurate seconds are not used;
 continuous frame timing supplies the minutes and seconds.
 
-### The standard/daylight flag
+### DST, and why the receiver overrides the network
 
-`L`, at word bit 16, says which kind of time a network is transmitting: set for
-local standard time, clear for daylight saving time. It is read, reported on
-the Network screen beside the zone as `UTC-8 | DST` when daylight is
-advertised, and **not applied to the clock** - the transmitted hour is used
-exactly as sent, which is what the spec prescribes.
+`Settings -> DST:` is **daylight saving where you are**, not on the network. It
+sits beside `Time sync` because it reaches the RTC and not only the display.
 
-The receiver read this flag at bit 20 for several releases, which is the top bit
-of the accurate-seconds field rather than the flag at all, so toggling daylight
-on a transmitter moved nothing. Both this app's `flex_tx_biw_zone` and Mayhem's
-`flex_biw_sysinfo` write it at 16, which is what settled the position against a
-transmitter rather than against inference.
+| | |
+|---|---|
+| `Off` | a network advertising daylight time is an hour fast, so the hour and the zone offset lose an hour. Default. |
+| `On` | whatever the network advertises is accepted as sent. |
 
-Note that Mayhem sends `L` from `pmem::dst_enabled()` - whether daylight saving
-is *configured* - rather than `dst_in_range`, whether it is currently in
-*force*. A PortaPack with DST enabled therefore advertises daylight in
-midwinter, and the marker is faithfully reporting what it sent.
+Nothing else moves the clock. A network advertising standard time is taken as
+transmitted under either setting, and `Off` is also the right standing value
+where daylight saving is never observed.
+
+The reason the receiver gets the last word is that **the network knows which
+kind of time it is sending, and only the receiver knows whether that is the
+season**. `L` at word bit 16 says which - set for standard, clear for daylight -
+and observed networks are honest about it. What they cannot know is whether
+their own answer is still current.
+
+Two production networks, measured in a Pacific winter against NTP:
+
+| | `ExtSec` | date sent | `L` says | hour | honest |
+|---|---|---|---|---|---|
+| network A | 0 | 2015-11-17 | standard | matches NTP | yes |
+| network B | 5 | 2007-04-03 | daylight | an hour fast | yes |
+
+Both flags are correct. Network A is well run: its date is today's, with 2015
+being 2026's calendar twin, the same substitution this app's own transmitter
+makes. Network B's date is frozen in **April** 2007 - inside daylight saving
+season - so its terminal applies DST, transmits daylight time, and says so
+accurately. Its clock is live while its date is not. Nothing is lying; a stale
+date is driving correct logic to an answer that stopped being true in November.
+
+So `DST: Off` corrects network B and leaves network A alone, from the flag
+alone, and it keeps working when the season turns: in summer, `DST: On` accepts
+network B's daylight time, which is right by then, and accepts network A once it
+switches over too.
+
+One transmitter this cannot satisfy is Mayhem's FLEX TX with DST enabled. It
+sends `L` from `pmem::dst_enabled()` - whether daylight saving is *configured* -
+rather than `dst_in_range`, whether it is in *force*, so in midwinter it
+advertises daylight while transmitting standard time. That is a malformed
+transmission, and `DST: Off` will take an hour off it. Leave DST off on the
+PortaPack when using it as a reference.
+
+An earlier build gated this on `AccSec >= 4` instead - the accurate-seconds
+field, which the decoder misread as the flag for several releases. On these
+three transmitters it happened to land correctly every time (0, 5, 0 against
+"no, yes, no"), but the correlation was incidental: network B is simply a
+neglected site that also sends a nonzero trim. The flag carries the real signal,
+so the trim is reported and never applied.
+
+The hour and the zone offset always move together or not at all: a `UTC-8` label
+over a clock still reading `-7` is worse than either answer on its own. Time
+sync takes the same corrected hour the screen shows, so Full sync can never
+write an hour the HUD did not display.
 
 ## References for the FLEX transmitter
 
@@ -518,7 +560,9 @@ Three details follow from the datasheets rather than from any implementation:
   table has codes for -3:30 and +9:30 but none for daylight in Newfoundland or
   Adelaide. `L` describes the transmitted time; it does not ask a receiver to
   adjust it. The spec is explicit that "the time transmitted is the local time
-  for the transmitted time zone", so the hour is used as sent. All 31 zone
+  for the transmitted time zone", so by the spec the hour is used as sent. It is
+  used as sent here too, unless a network advertises daylight time out of season
+  - see [DST](#dst-and-why-the-receiver-overrides-the-network). All 31 zone
   codes in TI table 2-8 were checked against `pcsg_zone_quarters` and agree.
 - The three bits at 18-20 are **Accurate Seconds**, not a security or zone
   field: "how much time should be added to the coarse seconds in 1/64-of-a-
