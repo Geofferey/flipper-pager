@@ -32,9 +32,14 @@
 static uint16_t pocsag_pager_scene_network_info_year(
     uint8_t field,
     uint16_t local_year,
-    bool era) {
+    PCSGYearEpoch epoch) {
     const uint16_t base = 1994U + (field & 31U);
-    if(!era || base >= local_year) return base;
+    if(epoch != PCSGYearEpochAuto) {
+        return (uint16_t)(base + (uint16_t)(epoch - PCSGYearEpoch0) * 32U);
+    }
+    // The latest window that has begun. Only moves a field whose next window
+    // has already started, which in 2026 is field 0 and nothing else.
+    if(base >= local_year) return base;
     return (uint16_t)(base + ((local_year - base) / 32U) * 32U);
 }
 
@@ -133,7 +138,7 @@ static void pocsag_pager_scene_network_info_draw(POCSAGPagerApp* app) {
                 sizeof(year_text),
                 "%u",
                 pocsag_pager_scene_network_info_year(
-                    info.year_field, local.year, app->filter.hud_year_era));
+                    info.year_field, local.year, app->filter.hud_year_epoch));
         } else {
             strlcpy(year_text, "????", sizeof(year_text));
         }

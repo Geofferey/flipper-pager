@@ -295,9 +295,10 @@ until then, which is the default. The year is chosen apart from the day and
 month because that is the part the observed networks get wrong: both send
 today's day and month, one with the year field wrapped to 1994 and the other
 with a date stale by years. `Year: Local` with `Day/Month: Network` reads the
-network's date and the Flipper's year. `Year era` decides how the network's own
-year field is read - see [the year era](#the-year-era) - and does nothing when
-the year is taken locally.
+network's date and the Flipper's year. `Epoch` decides which 32-year window the
+network's own year field counts within - see
+[the year epoch](#the-year-epoch) - and does nothing when the year is taken
+locally.
 `Offset` shifts the displayed hour by up to twelve hours either
 way, for a network whose hour is simply wrong. `Freq switch` decides what
 becomes of the reading when the channel changes from the settings menu:
@@ -451,32 +452,44 @@ The time BIW supplies the hour; SysInfo subtype 4/5 supplies the
 standard/daylight flag. The BIWs' coarse/accurate seconds are not used;
 continuous frame timing supplies the minutes and seconds.
 
-### The year era
+### The year epoch
 
 The year arrives as five bits counting from 1994, which TI table 2-5 defines as
-modulo arithmetic: 1994-2025, then 2026-2057, and so on. Nothing on the air says
-which window is meant, so `Year era` in the HUD options decides how to read it.
+modulo arithmetic. Each window is 32 years, and the year is
+`1994 + field + 32 * epoch`:
 
-| | year field 0 | field 13 | field 21 |
-|---|---|---|---|
-| `Off` (default) | 1994 | 2007 | 2015 |
-| `On` | **2026** | 2007 | 2015 |
+| epoch | field 0 | field 31 |
+|---|---|---|
+| 0 | 1994 | 2025 |
+| 1 | 2026 | 2057 |
+| 2 | 2058 | 2089 |
+| 3 | 2090 | 2121 |
 
-`Off` takes the field at face value and never names a year past 2025. `On` adds
-whole 32-year eras, up to **the latest era the Flipper's own clock says has
-begun** - not the nearest one. That distinction is the whole difficulty: a
-network frozen at 2007 sits in an era that has begun, so it still reads as 2007,
-where the nearest era would call it a future 2039 and be confidently wrong.
+Nothing on the air says which window is meant - the word carries five bits and
+no more - so `Epoch` in the HUD options says, and `Auto` guesses.
 
-Both readings are wanted because observed networks disagree about what they are
-doing. One is frozen at a genuinely stale 2007. One sends today's day and month
-with the year wrapped to 1994, which is 2026 an era on, and only `On` recovers
-it. A third sends 2015, the calendar twin of 2026, which both readings report as
-2015 - correct, because 2015 is what is on the wire, and the twin is chosen
-precisely so that every weekday still lands right.
+`Auto` takes **the latest window that has already begun**, read against the
+Flipper's own clock, rather than the nearest one. That matters: a network frozen
+at 2007 sits in a window that has begun and so still reads 2007, where the
+nearest window would call it a future 2039 and be confidently wrong.
 
-`On` leans on the Flipper's own clock being roughly right, which `Off` does not,
-so it is off by default.
+It also means **`Auto` moves almost nothing**. In 2026 the only field whose next
+window has started is field 0, so that is the only one it changes; every other
+field keeps its epoch 0 reading until its own window comes round. A network
+whose year really is past 2025 has to be told which epoch it is in.
+
+The three observed networks, with the Flipper on 2026:
+
+| | `Auto` | `0` | `1` | |
+|---|---|---|---|---|
+| field 0 | **2026** | 1994 | 2026 | year wrapped; it means 2026 |
+| field 13 | 2007 | 2007 | 2039 | frozen at a genuinely stale 2007 |
+| field 21 | 2015 | 2015 | 2047 | 2026 sent as its calendar twin 2015 |
+
+Which is why the epoch is a choice and not a calculation: field 13 and field 21
+are both being read correctly at epoch 0, and field 0 is not. Only the operator
+knows which of its networks is stale, which is transmitting a twin, and which
+has simply wrapped.
 
 ### DST, and why the receiver overrides the network
 
@@ -627,8 +640,8 @@ Three details follow from the datasheets rather than from any implementation:
 - The year field counts from 1994 and TI table 2-5 defines it as "the year with
   modulo arithmetic ... representing 1994 through 2025, 2026 through 2057, etc".
   Nothing on the air names which era is in force, so the reading is a choice,
-  and `Year era` in the HUD options makes it - see
-  [the year era](#the-year-era). On transmit a later year goes out as its
+  and `Epoch` in the HUD options makes it - see
+  [the year epoch](#the-year-epoch). On transmit a later year goes out as its
   calendar twin, the
   year in that window with the same leap status and the same weekday for
   1 January, so every date in it still lands on the right day - 2026 is sent as

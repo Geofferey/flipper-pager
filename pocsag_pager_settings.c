@@ -244,7 +244,7 @@ static const PCSGSetting pcsg_settings[] = {
     {"HudExtSec", 0, PCSG_FIELD(filter.hud_show_ext_sec), PCSGSetBool},
     {"HudFreqSwitch", PCSGHudFreqCount - 1, PCSG_FIELD(filter.hud_freq_switch), PCSGSetU32},
     {"HudYear", PCSGHudSourceCount - 1, PCSG_FIELD(filter.hud_year), PCSGSetU32},
-    {"HudYearEra", 0, PCSG_FIELD(filter.hud_year_era), PCSGSetBool},
+    {"HudYearEpoch", PCSGYearEpochCount - 1, PCSG_FIELD(filter.hud_year_epoch), PCSGSetU32},
     {"HudMsgCount", 0, PCSG_FIELD(filter.hud_show_msg_count), PCSGSetBool},
     {"AutoReceive", 0, PCSG_FIELD(filter.auto_receive), PCSGSetBool},
 };

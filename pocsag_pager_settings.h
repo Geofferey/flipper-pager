@@ -78,6 +78,30 @@ typedef enum {
 } PCSGPhaseFilter;
 
 /*
+ * Which 32-year window the network's five-bit year field counts within.
+ *
+ * The field is modulo arithmetic from 1994 (TI spra183 table 2-5), so epoch 0
+ * is 1994-2025, epoch 1 is 2026-2057, epoch 2 is 2058-2089, and the year is
+ * 1994 + field + 32 * epoch. Nothing on the air says which window is meant,
+ * so this does.
+ *
+ * Auto takes the latest window that has begun, read against the Flipper's own
+ * clock. That is the safe reading rather than the current one: a network stuck
+ * at 2007 stays 2007 instead of being called a future 2039. It also means Auto
+ * moves only the fields whose next window has already started - in 2026 that
+ * is field 0 alone - so a network has to be told which epoch it is in when its
+ * own year is past.
+ */
+typedef enum {
+    PCSGYearEpochAuto,
+    PCSGYearEpoch0,
+    PCSGYearEpoch1,
+    PCSGYearEpoch2,
+    PCSGYearEpoch3,
+    PCSGYearEpochCount,
+} PCSGYearEpoch;
+
+/*
  * How much of a message a list row carries behind its header.
  *
  * Hide stops at the message's colon, keeping a page tag where there is one.
@@ -319,9 +343,7 @@ typedef struct {
      *  and month right and only the year wrong, so they are chosen apart. */
     PCSGHudSource hud_date;
     PCSGHudSource hud_year;
-    /** Resolve the year field's 32-year era against the Flipper's clock,
-     *  rather than reading it as a year in 1994-2025 outright. */
-    bool hud_year_era;
+    PCSGYearEpoch hud_year_epoch;
     /** Local, Network, or Network falling back to Local until an hour word. */
     PCSGHudHour hud_hour;
     PCSGHudSource hud_minute;
