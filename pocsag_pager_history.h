@@ -140,6 +140,14 @@ void pcsg_history_free(PCSGHistory* instance);
  */
 void pcsg_history_set_temp_mode(PCSGHistory* instance, bool temp);
 
+/**
+ * Tell the log how the viewer wants its rows, so an arriving message's label
+ * is built that way on the decoder's own thread rather than being rebuilt from
+ * SD on the first draw - which happens with this object's mutex held, and so
+ * stands in the way of the next message being recorded.
+ */
+void pcsg_history_set_preview(PCSGHistory* instance, bool preview);
+
 /** Clear history and end the current log file; the next message starts a new one.
  *
  * @param instance - PCSGHistory instance

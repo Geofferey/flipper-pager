@@ -55,6 +55,13 @@ struct PCSGHistory {
     // Temp mode: one hidden file, overwritten each session and destroyed on
     // exit, instead of a kept log per session.
     bool temp_mode;
+    /*
+     * How the viewer wants its rows, so an arriving message's label is built
+     * that way once. Built the other way it is a cache miss on the first draw,
+     * and that miss reads the log from SD with this object's mutex held -
+     * which is the mutex the decoder thread needs to record the next message.
+     */
+    bool preview;
 
     FlipperFormat* scratch;
     FuriString* protocol;
@@ -317,6 +324,11 @@ void pcsg_history_free(PCSGHistory* instance) {
 void pcsg_history_set_temp_mode(PCSGHistory* instance, bool temp) {
     furi_assert(instance);
     instance->temp_mode = temp;
+}
+
+void pcsg_history_set_preview(PCSGHistory* instance, bool preview) {
+    furi_assert(instance);
+    instance->preview = preview;
 }
 
 void pcsg_history_reset(PCSGHistory* instance) {
@@ -702,16 +714,16 @@ PCSGHistoryStateAddKey
         slot->valid = true;
         slot->idx = instance->count;
         slot->type = item.type;
-        // Built whole, the setting being the viewer's business rather than
-        // the log's. A list drawn with the preview off misses this one and
-        // rebuilds it from the file, which is one seek per arriving message.
-        slot->preview = true;
+        // Built the way the viewer is asking for them, so drawing this row
+        // needs no second visit to the log. This runs on the decoder's thread
+        // with the mutex held; a miss here would put an SD read in its way.
+        slot->preview = instance->preview;
         pcsg_history_make_label_escaped(
             slot->label,
             sizeof(slot->label),
             furi_string_get_cstr(instance->ric),
             furi_string_get_cstr(instance->message),
-            true,
+            instance->preview,
             &slot->split);
 
         instance->count++;

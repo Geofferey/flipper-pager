@@ -94,6 +94,7 @@ typedef enum {
     PCSGFilterSideFrameMax,
     // The classic alert holds state across a change, as in Alerting.
     PCSGFilterSideAlertReset,
+    PCSGFilterSidePreview,
 } PCSGFilterRowSide;
 
 typedef struct {
@@ -115,7 +116,7 @@ static const PCSGFilterRow pcsg_filter_rows[] = {
     // Scroll shows it and walks the rows along when they overflow.
     [PCSGFilterIndexPreview] =
         {"Preview:", preview_text, PCSG_FILTER_ROW(filter.preview), PCSGPreviewCount,
-         PCSGFilterRowEnum, PCSGFilterSideNone},
+         PCSGFilterRowEnum, PCSGFilterSidePreview},
     [PCSGFilterIndexShowAlpha] =
         {"Alphanumeric:", hide_show_text, PCSG_FILTER_ROW(filter.show_alpha), HIDE_SHOW_COUNT,
          PCSGFilterRowBool, PCSGFilterSideNone},
@@ -266,6 +267,11 @@ static void pcsg_filter_row_changed(VariableItem* item) {
         break;
     case PCSGFilterSideAlertReset:
         pcsg_classic_alert_reset(app);
+        break;
+    case PCSGFilterSidePreview:
+        // Straight away, so a message arriving while this screen is open has
+        // its label built the way the list is about to ask for it.
+        pcsg_history_set_preview(app->txrx->history, app->filter.preview != PCSGPreviewHide);
         break;
     default:
         break;

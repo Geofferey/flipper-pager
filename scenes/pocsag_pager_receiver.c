@@ -242,9 +242,10 @@ void pocsag_pager_scene_receiver_on_enter(void* context) {
     pocsag_pager_scene_receiver_update_clock(app);
 
     pcsg_view_receiver_set_callback(app->pcsg_receiver, pocsag_pager_scene_receiver_callback, app);
-    // Re-read on the way back from settings, which is where it changes.
+    // Re-read on the way back from settings, which is where they change.
     pcsg_view_receiver_set_scroll(
         app->pcsg_receiver, app->filter.preview == PCSGPreviewScroll);
+    pcsg_history_set_preview(app->txrx->history, app->filter.preview != PCSGPreviewHide);
     subghz_receiver_set_rx_callback(
         app->txrx->receiver, pocsag_pager_scene_receiver_add_to_history_callback, app);
 
