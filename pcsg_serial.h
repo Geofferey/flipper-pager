@@ -24,6 +24,13 @@ PCSGSerial* pcsg_serial_alloc(POCSAGPagerApp* app);
 
 void pcsg_serial_free(PCSGSerial* serial);
 
+/**
+ * Say that a transmission has finished, so `+TXDONE` goes out. Called from the
+ * app thread; the line itself is written by the link's own thread, which is
+ * the only one that waits on the endpoint.
+ */
+void pcsg_serial_notify_tx_done(PCSGSerial* serial);
+
 /** Whether the host has the port open, from the CDC control lines. */
 bool pcsg_serial_connected(const PCSGSerial* serial);
 

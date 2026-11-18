@@ -13,17 +13,20 @@
 #define PCSG_SERIAL_LINE_MAX 288U
 #define PCSG_SERIAL_OUT_MAX  192U
 
-#define PCSG_SERIAL_FLAG_RX   (1UL << 0)
-#define PCSG_SERIAL_FLAG_TX   (1UL << 1)
-#define PCSG_SERIAL_FLAG_STOP (1UL << 2)
-#define PCSG_SERIAL_FLAG_ALL \
-    (PCSG_SERIAL_FLAG_RX | PCSG_SERIAL_FLAG_TX | PCSG_SERIAL_FLAG_STOP)
+#define PCSG_SERIAL_FLAG_RX    (1UL << 0)
+#define PCSG_SERIAL_FLAG_TX    (1UL << 1)
+#define PCSG_SERIAL_FLAG_STOP  (1UL << 2)
+#define PCSG_SERIAL_FLAG_EVENT (1UL << 3)
+#define PCSG_SERIAL_FLAG_ALL                                                     \
+    (PCSG_SERIAL_FLAG_RX | PCSG_SERIAL_FLAG_TX | PCSG_SERIAL_FLAG_STOP | \
+     PCSG_SERIAL_FLAG_EVENT)
 
 struct PCSGSerial {
     POCSAGPagerApp* app;
     FuriThread* thread;
     FuriHalUsbInterface* usb_restore;
     volatile bool connected;
+    volatile bool tx_done;
     volatile uint32_t commands;
     // Assembled command, and the last one answered for the screen.
     char line[PCSG_SERIAL_LINE_MAX];
@@ -465,6 +468,12 @@ static int32_t pcsg_serial_thread(void* context) {
             furi_thread_flags_wait(PCSG_SERIAL_FLAG_ALL, FuriFlagWaitAny, FuriWaitForever);
         if(flags & FuriFlagError) continue;
         if(flags & PCSG_SERIAL_FLAG_STOP) break;
+        if(flags & PCSG_SERIAL_FLAG_EVENT) {
+            if(serial->tx_done) {
+                serial->tx_done = false;
+                pcsg_serial_write(serial, "+TXDONE\r\n");
+            }
+        }
         if(!(flags & PCSG_SERIAL_FLAG_RX)) continue;
 
         int32_t read;
@@ -526,6 +535,12 @@ void pcsg_serial_free(PCSGSerial* serial) {
     furi_thread_free(serial->thread);
     furi_hal_usb_set_config(serial->usb_restore, NULL);
     free(serial);
+}
+
+void pcsg_serial_notify_tx_done(PCSGSerial* serial) {
+    if(!serial) return;
+    serial->tx_done = true;
+    furi_thread_flags_set(furi_thread_get_id(serial->thread), PCSG_SERIAL_FLAG_EVENT);
 }
 
 bool pcsg_serial_connected(const PCSGSerial* serial) {

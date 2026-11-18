@@ -48,6 +48,20 @@ void pocsag_pager_scene_tx_remote_on_enter(void* context) {
 bool pocsag_pager_scene_tx_remote_on_event(void* context, SceneManagerEvent event) {
     POCSAGPagerApp* app = context;
     if(event.type != SceneManagerEventTypeTick) return false;
+
+    /*
+     * Finishing a transmission is something the owning scene has to notice:
+     * pcsg_tx_complete only asks the radio, and pcsg_tx_stop is what hands it
+     * back. Review & send does this from its own tick, so a link that did not
+     * would leave the radio in Tx after the first page and refuse every one
+     * after it as busy. Checked every tick rather than on the redraw, so the
+     * radio is released as soon as it is done.
+     */
+    if(pcsg_tx_complete(app)) {
+        pcsg_tx_stop(app);
+        pcsg_serial_notify_tx_done(app->serial);
+    }
+
     const uint32_t now = furi_get_tick();
     const uint32_t last =
         scene_manager_get_scene_state(app->scene_manager, POCSAGPagerSceneTxRemote);
