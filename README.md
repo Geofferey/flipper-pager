@@ -147,10 +147,15 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   `Filtering` holds everything that decides which messages
   reach the list, and how much of one it shows - `Preview`, per-kind FLEX page
   visibility, duplicates, encrypted and partial messages, the capcode, RIC and
-  frame filters with their ranges, and the FLEX phase. `Preview: Hide` leaves
-  each row its header and drops the message text from the colon onwards, so a
-  FLEX row reads `123456 ALN` and a POCSAG one stops after its function; the
-  message itself is still there, one OK away. `Alerting` holds how a message announces itself and what the
+  frame filters with their ranges, and the FLEX phase. `Preview` takes `Hide`, `Show` or
+  `Scroll`. `Hide` leaves each row its header and drops the message text from
+  the colon onwards, so a FLEX row reads `123456 ALN` and a POCSAG one stops
+  after its function; the message is still there, one OK away. `Show` fills the
+  row and truncates. `Scroll` fills it and then walks all four rows on screen
+  along together, a character every 300 ms, each stopping at its own end and
+  holding there while a longer one catches up, then starting over - a row short
+  enough to fit never moves, and a list where none overflows is not repainted
+  for it. `Alerting` holds how a message announces itself and what the
   radio sounds like - the alert and its tone, the receive and decode LEDs, and
   the signal sound with its volume, pitch and spread. `Debug` holds the rows for
   working on the app rather than using it - the crystal `Correction`, `Raw

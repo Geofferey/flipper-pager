@@ -30,7 +30,7 @@ static void pocsag_pager_scene_review_item_callback(
     FuriString* label,
     uint8_t* type) {
     POCSAGPagerApp* app = context;
-    pcsg_log_get_label(app->log, idx, label, app->filter.show_preview);
+    pcsg_log_get_label(app->log, idx, label, app->filter.preview != PCSGPreviewHide);
     *type = SubGhzProtocolTypeStatic;
 }
 

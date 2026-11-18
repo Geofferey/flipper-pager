@@ -202,7 +202,7 @@ static void pocsag_pager_scene_receiver_item_callback(
     uint8_t* type) {
     POCSAGPagerApp* app = context;
     pcsg_history_get_text_item_menu(
-        app->txrx->history, label, idx, app->filter.show_preview);
+        app->txrx->history, label, idx, app->filter.preview != PCSGPreviewHide);
     *type = pcsg_history_get_type_protocol(app->txrx->history, idx);
 }
 
@@ -236,6 +236,9 @@ void pocsag_pager_scene_receiver_on_enter(void* context) {
     pocsag_pager_scene_receiver_update_clock(app);
 
     pcsg_view_receiver_set_callback(app->pcsg_receiver, pocsag_pager_scene_receiver_callback, app);
+    // Re-read on the way back from settings, which is where it changes.
+    pcsg_view_receiver_set_scroll(
+        app->pcsg_receiver, app->filter.preview == PCSGPreviewScroll);
     subghz_receiver_set_rx_callback(
         app->txrx->receiver, pocsag_pager_scene_receiver_add_to_history_callback, app);
 
@@ -352,6 +355,7 @@ bool pocsag_pager_scene_receiver_on_event(void* context, SceneManagerEvent event
     } else if(event.type == SceneManagerEventTypeTick) {
         pcsg_time_sync(app);
         pocsag_pager_scene_receiver_update_clock(app);
+        pcsg_view_receiver_scroll_step(app->pcsg_receiver);
         // Reading RSSI needs SPI, and FLEX4 needs uninterrupted access to both
         // hard-decision GPIOs, one of which shares the SPI MISO pin.
         if(!pcsg_preset_is_flex4(furi_string_get_cstr(app->txrx->preset->name))) {

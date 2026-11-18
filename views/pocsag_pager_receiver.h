@@ -38,6 +38,13 @@ void pcsg_view_receiver_set_clock(
     const char* time_str,
     bool show);
 
+/** Walk overflowing list rows along instead of truncating them. */
+void pcsg_view_receiver_set_scroll(PCSGReceiver* pcsg_receiver, bool enable);
+
+/** One tick of that walk; does nothing, and asks for no redraw, while no row
+ *  on screen is too long to fit. */
+void pcsg_view_receiver_scroll_step(PCSGReceiver* pcsg_receiver);
+
 /** Fills a list row's label and icon type; the view keeps no copies. */
 typedef void (*PCSGReceiverItemCallback)(
     void* context,

@@ -77,6 +77,20 @@ typedef enum {
     PCSGPhaseFilterCount,
 } PCSGPhaseFilter;
 
+/*
+ * How much of a message a list row carries behind its header.
+ *
+ * Hide stops at the message's colon, keeping a page tag where there is one.
+ * Show fills the row and truncates. Scroll fills it and then walks every row
+ * on screen along together, holding at each end so both can be read.
+ */
+typedef enum {
+    PCSGPreviewHide,
+    PCSGPreviewShow,
+    PCSGPreviewScroll,
+    PCSGPreviewCount,
+} PCSGPreview;
+
 /** FLEX duplicate handling in the live viewer. */
 typedef enum {
     PCSGFlexDupsHide,
@@ -257,8 +271,7 @@ typedef struct {
     uint32_t ric_min;
     uint32_t ric_max;
     PCSGFlexDups flex_dups;
-    /** Whether a list row carries the message text after its header. */
-    bool show_preview;
+    PCSGPreview preview;
     bool hide_encrypted;
     // Discard FLEX messages that could not be fully decoded (off by default).
     bool hide_partial;

@@ -35,6 +35,12 @@ static const char* const hide_show_text[HIDE_SHOW_COUNT] = {
     "Show",
 };
 
+static const char* const preview_text[PCSGPreviewCount] = {
+    "Hide",
+    "Show",
+    "Scroll",
+};
+
 // Order follows PCSGFlexDups: Hide, Show, then Caps.
 static const char* const flex_dups_text[PCSGFlexDupsCount] = {
     "Hide",
@@ -87,10 +93,11 @@ typedef struct {
 _Static_assert(sizeof(bool) == 1, "row fields are byte-wide");
 
 static const PCSGFilterRow pcsg_filter_rows[] = {
-    // Hide leaves a row its header and drops the message text behind it.
+    // Hide leaves a row its header and drops the message text behind it;
+    // Scroll shows it and walks the rows along when they overflow.
     [PCSGFilterIndexPreview] =
-        {"Preview:", hide_show_text, PCSG_FILTER_ROW(filter.show_preview), HIDE_SHOW_COUNT,
-         PCSGFilterRowBool, PCSGFilterSideNone},
+        {"Preview:", preview_text, PCSG_FILTER_ROW(filter.preview), PCSGPreviewCount,
+         PCSGFilterRowEnum, PCSGFilterSideNone},
     [PCSGFilterIndexShowAlpha] =
         {"Alphanumeric:", hide_show_text, PCSG_FILTER_ROW(filter.show_alpha), HIDE_SHOW_COUNT,
          PCSGFilterRowBool, PCSGFilterSideNone},

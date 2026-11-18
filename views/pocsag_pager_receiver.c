@@ -65,7 +65,22 @@ typedef struct {
     bool review;
     // Status bar showing the network clock rather than the frequency line.
     bool show_time;
+    /*
+     * Preview marquee. `span` is the furthest any row on screen needs to walk
+     * and is written by the draw, which is the only place a row's width is
+     * known; zero means nothing overflows and the step does no work, so a list
+     * that fits is not repainted for the sake of it.
+     */
+    bool scroll_enabled;
+    uint8_t scroll_tick;
+    uint8_t scroll_pos;
+    uint8_t scroll_span;
 } PCSGReceiverModel;
+
+// Steps of the 100 ms scene tick per character, and how many are spent
+// holding at each end so the start and the tail can both be read.
+#define PCSG_SCROLL_TICKS 3U
+#define PCSG_SCROLL_HOLD  6U
 
 void pcsg_receiver_rssi(PCSGReceiver* instance, float rssi) {
     furi_assert(instance);
@@ -267,6 +282,72 @@ void pcsg_view_receiver_set_clock(
         changed);
 }
 
+void pcsg_view_receiver_set_scroll(PCSGReceiver* pcsg_receiver, bool enable) {
+    furi_assert(pcsg_receiver);
+    bool changed = false;
+    with_view_model(
+        pcsg_receiver->view,
+        PCSGReceiverModel * model,
+        {
+            if(model->scroll_enabled != enable) {
+                model->scroll_enabled = enable;
+                model->scroll_tick = 0;
+                model->scroll_pos = 0;
+                model->scroll_span = 0;
+                changed = true;
+            }
+        },
+        changed);
+}
+
+/*
+ * One step of the marquee, from the scene tick. Commits only when a row
+ * actually moves: the list is otherwise repainted ten times a second, which
+ * on FLEX4 is work the scene is careful not to do.
+ */
+void pcsg_view_receiver_scroll_step(PCSGReceiver* pcsg_receiver) {
+    furi_assert(pcsg_receiver);
+    bool changed = false;
+    with_view_model(
+        pcsg_receiver->view,
+        PCSGReceiverModel * model,
+        {
+            // Nested rather than guarded with an early return: the body is a
+            // macro's, not a function's or a loop's.
+            if(model->scroll_enabled && model->scroll_span) {
+                if(++model->scroll_tick >= PCSG_SCROLL_TICKS) {
+                    model->scroll_tick = 0;
+                    // Walk out, hold, and start over from the top.
+                    const uint16_t cycle =
+                        (uint16_t)model->scroll_span + PCSG_SCROLL_HOLD * 2U;
+                    model->scroll_pos = (uint8_t)((model->scroll_pos + 1U) % cycle);
+                    changed = true;
+                }
+            }
+        },
+        changed);
+}
+
+/*
+ * How many leading characters can come off before what is left fits the row,
+ * measured from the end so each glyph is weighed once.
+ */
+static uint8_t
+    pcsg_view_receiver_scroll_span(Canvas* canvas, const FuriString* str, uint8_t avail) {
+    const size_t length = furi_string_size(str);
+    size_t width = 0;
+    size_t tail = 0;
+    while(tail < length) {
+        const uint8_t c = (uint8_t)furi_string_get_char(str, length - 1U - tail);
+        const size_t glyph = canvas_glyph_width(canvas, c);
+        if(width + glyph > avail) break;
+        width += glyph;
+        tail++;
+    }
+    const size_t span = length - tail;
+    return span > UINT8_MAX ? UINT8_MAX : (uint8_t)span;
+}
+
 // Draws one field ending at `right` and returns where the next field to its
 // left should end. An empty field takes no room and leaves no gap.
 static uint8_t pcsg_view_receiver_draw_field(Canvas* canvas, uint8_t right, const char* str) {
@@ -326,12 +407,26 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
     FuriString* str_buff = model->row_str;
     furi_string_reset(str_buff);
 
+    const uint8_t row_px = scrollbar ? MAX_LEN_PX - 7 : MAX_LEN_PX;
+    uint8_t span = 0;
     for(size_t i = 0; i < MIN(model->history_item, MENU_ITEMS) && model->item_callback; ++i) {
         size_t idx = CLAMP((uint16_t)(i + model->list_offset), model->history_item, 0);
         uint8_t type = 0;
         model->item_callback(model->item_context, idx, str_buff, &type);
         furi_string_replace_all(str_buff, "#", "");
-        elements_string_fit_width(canvas, str_buff, scrollbar ? MAX_LEN_PX - 7 : MAX_LEN_PX);
+        if(model->scroll_enabled) {
+            const uint8_t row_span = pcsg_view_receiver_scroll_span(canvas, str_buff, row_px);
+            if(row_span > span) span = row_span;
+            // Held at the top for the first steps, then walked to this row's
+            // own end and held there while a longer one catches up.
+            uint8_t offset = 0;
+            if(model->scroll_pos > PCSG_SCROLL_HOLD) {
+                offset = (uint8_t)(model->scroll_pos - PCSG_SCROLL_HOLD);
+                if(offset > row_span) offset = row_span;
+            }
+            if(offset) furi_string_right(str_buff, offset);
+        }
+        elements_string_fit_width(canvas, str_buff, row_px);
         if(model->idx == idx) {
             pcsg_view_receiver_draw_frame(canvas, i, scrollbar);
         } else {
@@ -342,6 +437,9 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
         canvas_draw_str(canvas, 15, 9 + i * FRAME_HEIGHT, furi_string_get_cstr(str_buff));
         furi_string_reset(str_buff);
     }
+    // What the step needs and only the draw knows. Writing it here does not
+    // ask for a redraw; the scene tick is what drives the marquee.
+    model->scroll_span = span;
     if(scrollbar) {
         elements_scrollbar_pos(canvas, 128, 0, 49, model->idx, model->history_item);
     }
