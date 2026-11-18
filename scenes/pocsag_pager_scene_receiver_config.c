@@ -12,8 +12,6 @@ enum PCSGSettingIndex {
     PCSGSettingIndexFilter,
     PCSGSettingIndexAlerting,
     PCSGSettingIndexLogging,
-    PCSGSettingIndexTimeSync,
-    PCSGSettingIndexDst,
     PCSGSettingIndexDebug,
     PCSGSettingIndexHud,
     PCSGSettingIndexLock,
@@ -28,19 +26,8 @@ const char* const logging_text[LOGGING_COUNT] = {
     "Temp",
 };
 
-const char* const time_sync_text[PCSGTimeSyncCount] = {
-    "Off",
-    "MM:SS",
-    "HH:MM:SS",
-};
-
-// Daylight saving here, not on the network: each corrects the network that
-// disagrees with it. Disabled corrects nothing.
-const char* const dst_text[PCSGDstCount] = {
-    "Off",
-    "On",
-    "Disabled",
-};
+// Time sync and DST now live in pocsag_pager_scene_hud_config.c, the clock
+// being what they are about.
 
 // The alert, LED and signal-tone rows and their text now live in
 // pocsag_pager_scene_alert_config.c.
@@ -127,16 +114,15 @@ const char* const auto_receive_text[AUTO_RECEIVE_COUNT] = {
  * list cannot drift apart, and the gaps are the rows that genuinely differ
  * (frequency, preset, the number entries, the correction, Lock).
  */
+/*
+ * Only two kinds are left: a door or the Lock row, which this table does not
+ * describe, and a switch. Everything that picked from a list of values, or
+ * poked something else when it changed, now lives in one of the sub-scenes.
+ */
 typedef enum {
     PCSGRowNone, // a row this table does not describe
-    PCSGRowEnum, // field = index
     PCSGRowBool, // field = index != 0
 } PCSGRowKind;
-
-typedef enum {
-    PCSGSideNone,
-    PCSGSideTimeSync,
-} PCSGRowSide;
 
 typedef struct {
     const char* label;
@@ -144,7 +130,6 @@ typedef struct {
     uint16_t offset;
     uint8_t count;
     uint8_t kind;
-    uint8_t side;
 } PCSGConfigRow;
 
 #define PCSG_ROW(member) offsetof(POCSAGPagerApp, member)
@@ -153,26 +138,19 @@ typedef struct {
 _Static_assert(sizeof(bool) == 1, "row fields are byte-wide");
 
 static const PCSGConfigRow pcsg_config_rows[] = {
-    // Doors, as HUD options is. Two values so the list draws its own arrow.
-    [PCSGSettingIndexFilter] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
-    [PCSGSettingIndexAlerting] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
+    // Doors. Two values so the list draws its own arrow at the right edge.
+    [PCSGSettingIndexFilter] = {NULL, NULL, 0, 0, PCSGRowNone},
+    [PCSGSettingIndexAlerting] = {NULL, NULL, 0, 0, PCSGRowNone},
+    [PCSGSettingIndexDebug] = {NULL, NULL, 0, 0, PCSGRowNone},
     // Applies from the next receive session.
     [PCSGSettingIndexLogging] =
-        {"Logging:", logging_text, PCSG_ROW(filter.log_temp), LOGGING_COUNT, PCSGRowBool,
-         PCSGSideNone},
+        {"Logging:", logging_text, PCSG_ROW(filter.log_temp), LOGGING_COUNT, PCSGRowBool},
     // Receiving begins as the app opens, the menu going by unseen.
     [PCSGSettingIndexAutoReceive] =
         {"Auto RX:", auto_receive_text, PCSG_ROW(filter.auto_receive), AUTO_RECEIVE_COUNT,
-         PCSGRowBool, PCSGSideNone},
-    [PCSGSettingIndexTimeSync] =
-        {"Time sync:", time_sync_text, PCSG_ROW(filter.time_sync), PCSGTimeSyncCount,
-         PCSGRowEnum, PCSGSideTimeSync},
-    // Resyncs like the row above: it changes the hour sync would write.
-    [PCSGSettingIndexDst] =
-        {"DST:", dst_text, PCSG_ROW(filter.dst), PCSGDstCount, PCSGRowEnum, PCSGSideTimeSync},
-    [PCSGSettingIndexDebug] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
+         PCSGRowBool},
     // Lock has no value to pick, and fixes the table's length to the list's.
-    [PCSGSettingIndexLock] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
+    [PCSGSettingIndexLock] = {NULL, NULL, 0, 0, PCSGRowNone},
 };
 
 static uint8_t pcsg_config_row_value(const POCSAGPagerApp* app, const PCSGConfigRow* row) {
@@ -190,12 +168,7 @@ static void pcsg_config_row_changed(VariableItem* item) {
 
     const uint8_t value = variable_item_get_current_value_index(item);
     variable_item_set_current_value_text(item, row->text[value]);
-
-    uint8_t* field = (uint8_t*)app + row->offset;
-    *field = row->kind == PCSGRowEnum ? value : (value != 0U);
-
-    // Changing either clock row makes the pending sync stale.
-    if(row->side == PCSGSideTimeSync) app->time_sync_sequence = 0;
+    *((uint8_t*)app + row->offset) = value != 0U;
 }
 
 static void pocsag_pager_scene_receiver_config_hud_changed(VariableItem* item) {
@@ -304,8 +277,6 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_text(item, "");
 
     pcsg_config_row_add(app, PCSGSettingIndexLogging);
-    pcsg_config_row_add(app, PCSGSettingIndexTimeSync);
-    pcsg_config_row_add(app, PCSGSettingIndexDst);
 
     // For working on the app rather than using it: the crystal correction, the
     // two SD captures and the soft-decision decoder.

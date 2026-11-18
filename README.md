@@ -143,8 +143,8 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   defaults to Off. This is intended for licensed operators testing their own
   pager infrastructure; the app does not bypass firmware region restrictions.
 - **Settings** is the same configuration, available before receiving: frequency,
-  modulation, `Auto RX`, logging, FLEX time sync and DST, and four doors into
-  groups of their own. `Filtering` holds everything that decides which messages
+  modulation, `Auto RX`, logging, and four doors into groups of their own.
+  `Filtering` holds everything that decides which messages
   reach the list - per-kind FLEX page visibility, duplicates, encrypted and
   partial messages, the capcode, RIC and frame filters with their ranges, and
   the FLEX phase. `Alerting` holds how a message announces itself and what the
@@ -152,7 +152,9 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   the signal sound with its volume, pitch and spread. `Debug` holds the rows for
   working on the app rather than using it - the crystal `Correction`, `Raw
   Capture`, `Stats Log` and `Weak Decode`. `HUD options` is the clock and the
-  Network screen. The receive activity blink can be disabled or set to
+  Network screen, `Time sync` at its top and `DST` beside the zone row whose
+  daylight flag it overrides. The receive activity blink can be disabled or set
+  to
   cyan, blue, green, yellow, magenta, red or white, and keeps going for as long
   as the radio is listening, whichever screen is open; the successful-decode
   green blink can be disabled independently. Settings are saved to
@@ -298,10 +300,11 @@ having lost its place in the frame grid. `Ticker` sets
 whether the status
 bar rotates between the frequency and the clock, holds one of them, or stays
 off, and `Ticker secs` how long it holds each. The rest show or hide the
-individual Network screen fields. All of it is display only: the log keeps
-timestamping from the Flipper's own clock whatever is set here. The one clock
-setting that does reach the RTC is `DST`, which lives with `Time sync` rather
-than here.
+individual Network screen fields. Most of it is display only: the log keeps
+timestamping from the Flipper's own clock whatever is set here. The exceptions
+are the two rows at the top and beside the zone - `Time sync`, which sets the
+Flipper's own clock from the network's, and `DST`, which decides the hour both
+it and the screen are given.
 
 A reading stays once taken. The clock keeps running from the last trusted
 frame, and the zone, date and system words hold until the network replaces
@@ -467,8 +470,9 @@ so it is off by default.
 
 ### DST, and why the receiver overrides the network
 
-`Settings -> DST:` is **daylight saving where you are**, not on the network. It
-sits beside `Time sync` because it reaches the RTC and not only the display.
+`HUD options -> DST:` is **daylight saving where you are**, not on the network.
+It sits beside the zone row whose daylight flag it overrides, under `Time sync`,
+which takes the hour it produces.
 
 `Off` and `On` are the two answers to "is daylight saving in force here", and
 each corrects the network that disagrees with it. `Disabled` corrects nothing.

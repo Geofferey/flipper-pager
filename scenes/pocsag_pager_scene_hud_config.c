@@ -10,6 +10,7 @@
  * with the year field wrapped - so any part can be taken locally instead.
  */
 typedef enum {
+    PCSGHudConfigTimeSync,
     PCSGHudConfigDate,
     PCSGHudConfigYear,
     PCSGHudConfigYearEra,
@@ -20,6 +21,7 @@ typedef enum {
     PCSGHudConfigTicker,
     PCSGHudConfigTickerSecs,
     PCSGHudConfigZone,
+    PCSGHudConfigDst,
     PCSGHudConfigShowDate,
     PCSGHudConfigShowSource,
     PCSGHudConfigSsid1,
@@ -29,6 +31,21 @@ typedef enum {
     PCSGHudConfigMsgCount,
     PCSGHudConfigExtSec,
 } PCSGHudConfigIndex;
+
+// What the network's clock is allowed to do to the Flipper's own.
+static const char* const time_sync_text[PCSGTimeSyncCount] = {
+    "Off",
+    "MM:SS",
+    "HH:MM:SS",
+};
+
+// Daylight saving here, not on the network: each corrects the network that
+// disagrees with it. Disabled corrects nothing.
+static const char* const dst_text[PCSGDstCount] = {
+    "Off",
+    "On",
+    "Disabled",
+};
 
 static const char* const hud_source_text[PCSGHudSourceCount] = {"Network", "Local"};
 static const char* const hud_hour_text[PCSGHudHourCount] = {"Network", "Local", "Hybrid"};
@@ -62,6 +79,10 @@ typedef struct {
 #define PCSG_HUD_FIELD(member) offsetof(POCSAGPagerApp, member)
 
 static const PCSGHudRow pcsg_hud_rows[] = {
+    // First, because it is the one row here that reaches the Flipper's own
+    // clock rather than only the screen.
+    [PCSGHudConfigTimeSync] =
+        {"Time sync:", PCSG_HUD_FIELD(filter.time_sync), PCSGTimeSyncCount, time_sync_text},
     // Day and month together; the year is its own row below, because that is
     // the part the observed networks get wrong.
     [PCSGHudConfigDate] =
@@ -87,6 +108,8 @@ static const PCSGHudRow pcsg_hud_rows[] = {
         {"Ticker secs:", PCSG_HUD_FIELD(filter.hud_ticker_secs), 0, NULL},
     [PCSGHudConfigZone] =
         {"Zone:", PCSG_HUD_FIELD(filter.hud_show_zone), COUNT_OF(hud_show_text), hud_show_text},
+    // Beside the zone, whose daylight flag it overrides.
+    [PCSGHudConfigDst] = {"DST:", PCSG_HUD_FIELD(filter.dst), PCSGDstCount, dst_text},
     [PCSGHudConfigShowDate] =
         {"Date row:",
          PCSG_HUD_FIELD(filter.hud_show_date),
@@ -169,6 +192,12 @@ static void pocsag_pager_scene_hud_changed(VariableItem* item) {
     }
     *((uint8_t*)app + row->offset) = value;
     variable_item_set_current_value_text(item, row->text[value]);
+
+    // Both clock rows change the hour a pending sync would write, so the
+    // frame it was going to use is no longer the one to use.
+    if(index == PCSGHudConfigTimeSync || index == PCSGHudConfigDst) {
+        app->time_sync_sequence = 0;
+    }
 }
 
 // NULL is not an option here: the module furi_checks the callback.
