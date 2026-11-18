@@ -81,7 +81,7 @@ typedef enum {
     PocsagDecoderStepMessage,
 } PocsagDecoderStep;
 
-void* subghz_protocol_decoder_pocsag_alloc(SubGhzEnvironment* environment) {
+static void* subghz_protocol_decoder_pocsag_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
 
     SubGhzProtocolDecoderPocsag* instance = calloc(1, sizeof(SubGhzProtocolDecoderPocsag));
@@ -97,7 +97,7 @@ void* subghz_protocol_decoder_pocsag_alloc(SubGhzEnvironment* environment) {
     return instance;
 }
 
-void subghz_protocol_decoder_pocsag_free(void* context) {
+static void subghz_protocol_decoder_pocsag_free(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderPocsag* instance = context;
     furi_string_free(instance->msg);
@@ -112,7 +112,7 @@ void subghz_protocol_decoder_pocsag_free(void* context) {
     free(instance);
 }
 
-void subghz_protocol_decoder_pocsag_reset(void* context) {
+static void subghz_protocol_decoder_pocsag_reset(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderPocsag* instance = context;
 
@@ -322,7 +322,7 @@ static void pocsag_add_preamble_bit(
     }
 }
 
-void subghz_protocol_decoder_pocsag_feed(void* context, bool level, uint32_t duration) {
+static void subghz_protocol_decoder_pocsag_feed(void* context, bool level, uint32_t duration) {
     furi_assert(context);
     SubGhzProtocolDecoderPocsag* instance = context;
 
@@ -489,17 +489,7 @@ uint32_t subghz_protocol_decoder_pocsag_get_ric(void* context) {
     return instance->ric;
 }
 
-uint8_t subghz_protocol_decoder_pocsag_get_hash_data(void* context) {
-    furi_assert(context);
-    SubGhzProtocolDecoderPocsag* instance = context;
-    // Include the RIC: one message is often sent to several pagers in a row.
-    uint8_t hash = instance->ric ^ (instance->ric >> 8) ^ (instance->ric >> 16);
-    for(size_t i = 0; i < furi_string_size(instance->done_msg); i++)
-        hash ^= furi_string_get_char(instance->done_msg, i);
-    return hash;
-}
-
-SubGhzProtocolStatus subghz_protocol_decoder_pocsag_serialize(
+static SubGhzProtocolStatus subghz_protocol_decoder_pocsag_serialize(
     void* context,
     FlipperFormat* flipper_format,
     SubGhzRadioPreset* preset) {
@@ -572,15 +562,6 @@ SubGhzProtocolStatus
         ret = SubGhzProtocolStatusOk;
     } while(false);
     return ret;
-}
-
-void subhz_protocol_decoder_pocsag_get_string(void* context, FuriString* output) {
-    furi_assert(context);
-    SubGhzProtocolDecoderPocsag* instance = context;
-    furi_string_cat_printf(
-        output, "%s %lu\r\n", instance->generic.protocol_name, instance->version);
-    furi_string_cat_printf(output, "Addr: %lu\r\n", instance->ric);
-    furi_string_cat(output, instance->done_msg);
 }
 
 const SubGhzProtocolDecoder subghz_protocol_pocsag_decoder = {

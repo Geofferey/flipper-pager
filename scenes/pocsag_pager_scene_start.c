@@ -8,7 +8,7 @@ typedef enum {
     SubmenuIndexPOCSAGPagerAbout,
 } SubmenuIndex;
 
-void pocsag_pager_scene_start_submenu_callback(void* context, uint32_t index) {
+static void pocsag_pager_scene_start_submenu_callback(void* context, uint32_t index) {
     POCSAGPagerApp* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, index);
 }

@@ -397,7 +397,7 @@ static void pcsg_view_receiver_draw_statusbar(Canvas* canvas, PCSGReceiverModel*
     pcsg_view_receiver_draw_field(canvas, right, furi_string_get_cstr(model->frequency_str));
 }
 
-void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
+static void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
     canvas_set_font(canvas, FontSecondary);
@@ -416,7 +416,6 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
         uint8_t type = 0;
         uint8_t split = 0;
         model->item_callback(model->item_context, idx, str_buff, &type, &split);
-        furi_string_replace_all(str_buff, "#", "");
 
         /*
          * The header - the address and the page kind - stays where it is and
@@ -575,7 +574,7 @@ static void pcsg_view_receiver_hint_timer_callback(void* context) {
         true);
 }
 
-bool pcsg_view_receiver_input(InputEvent* event, void* context) {
+static bool pcsg_view_receiver_input(InputEvent* event, void* context) {
     furi_assert(context);
     PCSGReceiver* pcsg_receiver = context;
 
@@ -699,7 +698,7 @@ bool pcsg_view_receiver_input(InputEvent* event, void* context) {
     return true;
 }
 
-void pcsg_view_receiver_enter(void* context) {
+static void pcsg_view_receiver_enter(void* context) {
     furi_assert(context);
 }
 

@@ -142,7 +142,7 @@ static void pocsag_pager_scene_receiver_update_clock(POCSAGPagerApp* app) {
     pcsg_view_receiver_set_clock(app->pcsg_receiver, expired ? "" : NULL, show);
 }
 
-void pocsag_pager_scene_receiver_callback(PCSGCustomEvent event, void* context) {
+static void pocsag_pager_scene_receiver_callback(PCSGCustomEvent event, void* context) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, event);

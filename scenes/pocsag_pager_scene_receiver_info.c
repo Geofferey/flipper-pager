@@ -3,7 +3,7 @@
 #include "../protocols/flex.h"
 #include "../pocsag_pager_led.h"
 
-void pocsag_pager_scene_receiver_info_callback(PCSGCustomEvent event, void* context) {
+static void pocsag_pager_scene_receiver_info_callback(PCSGCustomEvent event, void* context) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
     view_dispatcher_send_custom_event(app->view_dispatcher, event);

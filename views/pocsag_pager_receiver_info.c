@@ -171,7 +171,7 @@ static void pcsg_view_receiver_info_cache_layout(
     model->layout_ready = true;
 }
 
-void pcsg_view_receiver_info_draw(Canvas* canvas, PCSGReceiverInfoModel* model) {
+static void pcsg_view_receiver_info_draw(Canvas* canvas, PCSGReceiverInfoModel* model) {
     canvas_clear(canvas);
     canvas_set_color(canvas, ColorBlack);
     canvas_set_font(canvas, FontSecondary);
@@ -212,7 +212,7 @@ void pcsg_view_receiver_info_draw(Canvas* canvas, PCSGReceiverInfoModel* model) 
     }
 }
 
-bool pcsg_view_receiver_info_input(InputEvent* event, void* context) {
+static bool pcsg_view_receiver_info_input(InputEvent* event, void* context) {
     furi_assert(context);
     PCSGReceiverInfo* pcsg_receiver_info = context;
 
@@ -270,11 +270,11 @@ bool pcsg_view_receiver_info_input(InputEvent* event, void* context) {
     return true;
 }
 
-void pcsg_view_receiver_info_enter(void* context) {
+static void pcsg_view_receiver_info_enter(void* context) {
     furi_assert(context);
 }
 
-void pcsg_view_receiver_info_exit(void* context) {
+static void pcsg_view_receiver_info_exit(void* context) {
     furi_assert(context);
     PCSGReceiverInfo* pcsg_receiver_info = context;
 

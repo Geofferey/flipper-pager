@@ -3,13 +3,6 @@
 
 #include <storage/storage.h>
 
-void pocsag_pager_scene_about_widget_callback(GuiButtonType result, InputType type, void* context) {
-    POCSAGPagerApp* app = context;
-    if(type == InputTypeShort) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, result);
-    }
-}
-
 /*
  * The body of this screen lives on the SD card rather than in .rodata. A FAP
  * is loaded into RAM whole and stays there for the session, so a page opened

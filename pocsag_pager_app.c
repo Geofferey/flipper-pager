@@ -103,7 +103,7 @@ static void pocsag_pager_app_create_frequency_file(void) {
     furi_record_close(RECORD_STORAGE);
 }
 
-POCSAGPagerApp* pocsag_pager_app_alloc() {
+static POCSAGPagerApp* pocsag_pager_app_alloc() {
     POCSAGPagerApp* app = calloc(1, sizeof(POCSAGPagerApp));
     atomic_init(&app->classic_alert_pending, false);
 
@@ -407,7 +407,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
     return app;
 }
 
-void pocsag_pager_app_free(POCSAGPagerApp* app) {
+static void pocsag_pager_app_free(POCSAGPagerApp* app) {
     furi_assert(app);
 
     // Save both receiver and transmitter configuration on every clean exit.

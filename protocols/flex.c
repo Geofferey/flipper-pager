@@ -377,7 +377,7 @@ static void flex_return_to_sync(SubGhzProtocolDecoderFlex* instance) {
     flex_clear_frame(instance);
 }
 
-void* subghz_protocol_decoder_flex_alloc(SubGhzEnvironment* environment) {
+static void* subghz_protocol_decoder_flex_alloc(SubGhzEnvironment* environment) {
     UNUSED(environment);
 
     SubGhzProtocolDecoderFlex* instance = malloc(sizeof(SubGhzProtocolDecoderFlex));
@@ -393,7 +393,7 @@ void* subghz_protocol_decoder_flex_alloc(SubGhzEnvironment* environment) {
     return instance;
 }
 
-void subghz_protocol_decoder_flex_free(void* context) {
+static void subghz_protocol_decoder_flex_free(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderFlex* instance = context;
     furi_string_free(instance->generic.result_ric);
@@ -432,7 +432,7 @@ void subghz_protocol_decoder_flex_reset_decode(void* context) {
     furi_string_reset(instance->generic.result_msg);
 }
 
-void subghz_protocol_decoder_flex_reset(void* context) {
+static void subghz_protocol_decoder_flex_reset(void* context) {
     subghz_protocol_decoder_flex_reset_decode(context);
     subghz_protocol_decoder_flex_reset_frame_timing(context);
 }
@@ -1957,7 +1957,7 @@ static bool flex_data_run_timing_valid(
            remaining <= tolerance;
 }
 
-void subghz_protocol_decoder_flex_feed(void* context, bool level, uint32_t duration) {
+static void subghz_protocol_decoder_flex_feed(void* context, bool level, uint32_t duration) {
     furi_assert(context);
     SubGhzProtocolDecoderFlex* instance = context;
     instance->four_level_path = false;
@@ -2263,20 +2263,7 @@ void subghz_protocol_decoder_flex_release_session(void* context) {
     subghz_protocol_decoder_flex_reset(instance);
 }
 
-uint8_t subghz_protocol_decoder_flex_get_hash_data(void* context) {
-    furi_assert(context);
-    SubGhzProtocolDecoderFlex* instance = context;
-    uint8_t hash = 0;
-    for(size_t i = 0; i < furi_string_size(instance->generic.result_ric); i++) {
-        hash ^= furi_string_get_char(instance->generic.result_ric, i);
-    }
-    for(size_t i = 0; i < furi_string_size(instance->generic.result_msg); i++) {
-        hash ^= furi_string_get_char(instance->generic.result_msg, i);
-    }
-    return hash;
-}
-
-SubGhzProtocolStatus subghz_protocol_decoder_flex_serialize(
+static SubGhzProtocolStatus subghz_protocol_decoder_flex_serialize(
     void* context,
     FlipperFormat* flipper_format,
     SubGhzRadioPreset* preset) {
@@ -2336,21 +2323,6 @@ SubGhzProtocolStatus
         if(value == 2U || value == 4U) instance->levels = value;
     }
     return SubGhzProtocolStatusOk;
-}
-
-void subghz_protocol_decoder_flex_get_string(void* context, FuriString* output) {
-    furi_assert(context);
-    SubGhzProtocolDecoderFlex* instance = context;
-    furi_string_cat_printf(
-        output,
-        "FLEX %u/%u %02u.%03u %c\r\nCAP: %09" PRIu32 "\r\n",
-        flex_bit_rate(instance),
-        instance->levels,
-        instance->cycle,
-        instance->frame,
-        instance->phase,
-        instance->capcode);
-    furi_string_cat(output, instance->generic.result_msg);
 }
 
 const SubGhzProtocolDecoder subghz_protocol_flex_decoder = {

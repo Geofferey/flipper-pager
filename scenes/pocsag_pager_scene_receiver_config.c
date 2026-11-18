@@ -21,7 +21,7 @@ enum PCSGSettingIndex {
 // now live in pocsag_pager_scene_filter_config.c.
 
 #define LOGGING_COUNT 2
-const char* const logging_text[LOGGING_COUNT] = {
+static const char* const logging_text[LOGGING_COUNT] = {
     "Save",
     "Temp",
 };
@@ -32,7 +32,8 @@ const char* const logging_text[LOGGING_COUNT] = {
 // The alert, LED and signal-tone rows and their text now live in
 // pocsag_pager_scene_alert_config.c.
 
-uint8_t pocsag_pager_scene_receiver_config_next_frequency(const uint32_t value, void* context) {
+static uint8_t
+    pocsag_pager_scene_receiver_config_next_frequency(const uint32_t value, void* context) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
     uint8_t index = 0;
@@ -47,7 +48,8 @@ uint8_t pocsag_pager_scene_receiver_config_next_frequency(const uint32_t value, 
     return index;
 }
 
-uint8_t pocsag_pager_scene_receiver_config_next_preset(const char* preset_name, void* context) {
+static uint8_t
+    pocsag_pager_scene_receiver_config_next_preset(const char* preset_name, void* context) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
     uint8_t index = 0;
@@ -103,16 +105,16 @@ static void pocsag_pager_scene_receiver_config_set_preset(VariableItem* item) {
 // pocsag_pager_scene_debug_config.c.
 
 #define AUTO_RECEIVE_COUNT 2
-const char* const auto_receive_text[AUTO_RECEIVE_COUNT] = {
+static const char* const auto_receive_text[AUTO_RECEIVE_COUNT] = {
     "Disable",
     "Enable",
 };
 /*
- * Every row that is just "pick a value, store it, maybe poke something" is
- * described here instead of getting its own setter and its own four lines in
- * on_enter. The entries are placed by PCSGSettingIndex, so the table and the
- * list cannot drift apart, and the gaps are the rows that genuinely differ
- * (frequency, preset, the number entries, the correction, Lock).
+ * Every row that is just "pick a value and store it" is described here instead
+ * of getting its own setter and its own four lines in on_enter. The entries
+ * are placed by PCSGSettingIndex, so the table and the list cannot drift
+ * apart, and the gaps are the rows that genuinely differ: frequency, preset,
+ * the three doors and Lock.
  */
 /*
  * Only two kinds are left: a door or the Lock row, which this table does not
