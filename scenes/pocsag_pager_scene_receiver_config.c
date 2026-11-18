@@ -1,15 +1,14 @@
 #include "../pocsag_pager_app_i.h"
 
+/*
+ * The index enum is the list order, so a row added here must be added to the
+ * table and to on_enter in the same place. What decides which messages reach
+ * the list lives in its own scene now, behind the Filtering row.
+ */
 enum PCSGSettingIndex {
     PCSGSettingIndexFrequency,
     PCSGSettingIndexModulation,
-    PCSGSettingIndexShowAlpha,
-    PCSGSettingIndexFlexDups,
-    PCSGSettingIndexShowNumeric,
-    PCSGSettingIndexShowTone,
-    PCSGSettingIndexShowBinary,
-    PCSGSettingIndexFlexEncrypted,
-    PCSGSettingIndexFlexPartial,
+    PCSGSettingIndexFilter,
     PCSGSettingIndexLogging,
     PCSGSettingIndexAutoReceive,
     PCSGSettingIndexAlert,
@@ -22,16 +21,6 @@ enum PCSGSettingIndex {
     PCSGSettingIndexToneVolume,
     PCSGSettingIndexTonePitch,
     PCSGSettingIndexToneSpread,
-    PCSGSettingIndexCapcodeFilter,
-    PCSGSettingIndexCapcodeMin,
-    PCSGSettingIndexCapcodeMax,
-    PCSGSettingIndexRicFilter,
-    PCSGSettingIndexRicMin,
-    PCSGSettingIndexRicMax,
-    PCSGSettingIndexFlexPhase,
-    PCSGSettingIndexFrameFilter,
-    PCSGSettingIndexFrameMin,
-    PCSGSettingIndexFrameMax,
     PCSGSettingIndexFreqCorr,
     PCSGSettingIndexRawCapture,
     PCSGSettingIndexStatsLog,
@@ -40,25 +29,8 @@ enum PCSGSettingIndex {
     PCSGSettingIndexLock,
 };
 
-const char* const phase_filter_text[PCSGPhaseFilterCount] = {
-    "All",
-    "A",
-    "B",
-    "C",
-    "D",
-};
-
-#define HIDE_SHOW_COUNT 2
-const char* const hide_show_text[HIDE_SHOW_COUNT] = {
-    "Hide",
-    "Show",
-};
-
-const char* const flex_dups_text[PCSGFlexDupsCount] = {
-    "Hide",
-    "Show",
-    "CAPS",
-};
+// The page-kind, duplicate, capcode/RIC/frame and phase rows and their text
+// now live in pocsag_pager_scene_filter_config.c.
 
 #define LOGGING_COUNT 2
 const char* const logging_text[LOGGING_COUNT] = {
@@ -136,27 +108,6 @@ const char* const tone_spread_text[PCSGToneSpreadCount] = {
     "Wide",
 };
 
-const char* const capcode_filter_text[PCSGCapcodeFilterCount] = {
-    "Off",
-    "Exact",
-    "Range",
-    "Alert",
-    "AlertRng",
-};
-
-/*
- * The maximum is only used in range mode; its text shows that.
- *
- * Each "max" row is looked up by position every time instead of keeping the
- * VariableItem* that variable_item_list_add() returned. The list holds its
- * items in an m-array, so adding the rows that follow eventually reallocates
- * it and moves every item; a kept pointer then refers to freed memory, and
- * writing a row's text through it corrupts the heap.
- */
-static VariableItem* pcsg_config_row(POCSAGPagerApp* app, uint8_t index) {
-    return variable_item_list_get(app->variable_item_list, index);
-}
-
 uint8_t pocsag_pager_scene_receiver_config_next_frequency(const uint32_t value, void* context) {
     furi_assert(context);
     POCSAGPagerApp* app = context;
@@ -223,47 +174,6 @@ static void pocsag_pager_scene_receiver_config_set_preset(VariableItem* item) {
     app->txrx->rx_restart = true;
 }
 
-
-static void pocsag_pager_scene_receiver_config_set_capcode_text(VariableItem* item, uint32_t value) {
-    char text_buf[10] = {0};
-    snprintf(text_buf, sizeof(text_buf), "%lu", value);
-    variable_item_set_current_value_text(item, text_buf);
-}
-
-// Both range modes use the maximum, the alert one included; the rest do not.
-static bool pcsg_config_filter_uses_max(PCSGCapcodeFilter mode) {
-    return mode == PCSGCapcodeFilterRange || mode == PCSGCapcodeFilterAlertRange;
-}
-
-static void pocsag_pager_scene_receiver_config_update_capcode_max(POCSAGPagerApp* app) {
-    VariableItem* item = pcsg_config_row(app, PCSGSettingIndexCapcodeMax);
-    if(!item) return;
-    if(pcsg_config_filter_uses_max(app->filter.capcode_filter)) {
-        pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.capcode_max);
-    } else {
-        variable_item_set_current_value_text(item, "--");
-    }
-}
-
-static void pocsag_pager_scene_receiver_config_update_ric_max(POCSAGPagerApp* app) {
-    VariableItem* item = pcsg_config_row(app, PCSGSettingIndexRicMax);
-    if(!item) return;
-    if(pcsg_config_filter_uses_max(app->filter.ric_filter)) {
-        pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.ric_max);
-    } else {
-        variable_item_set_current_value_text(item, "--");
-    }
-}
-
-static void pocsag_pager_scene_receiver_config_update_frame_max(POCSAGPagerApp* app) {
-    VariableItem* item = pcsg_config_row(app, PCSGSettingIndexFrameMax);
-    if(!item) return;
-    if(app->filter.frame_filter == PCSGCapcodeFilterRange) {
-        pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.frame_max);
-    } else {
-        variable_item_set_current_value_text(item, "--");
-    }
-}
 
 #define RAW_CAPTURE_COUNT 2
 const char* const raw_capture_text[RAW_CAPTURE_COUNT] = {
@@ -337,9 +247,6 @@ typedef enum {
 
 typedef enum {
     PCSGSideNone,
-    PCSGSideCapcodeMax,
-    PCSGSideRicMax,
-    PCSGSideFrameMax,
     PCSGSideAlert,
     PCSGSideTimeSync,
     PCSGSideRxRestart,
@@ -363,28 +270,8 @@ _Static_assert(sizeof(bool) == 1, "row fields are byte-wide");
 _Static_assert(sizeof(PCSGAlert) == 1, "build is missing -fshort-enums");
 
 static const PCSGConfigRow pcsg_config_rows[] = {
-    [PCSGSettingIndexShowAlpha] =
-        {"Alphanumeric:", hide_show_text, PCSG_ROW(filter.show_alpha), 0, HIDE_SHOW_COUNT,
-         PCSGRowBool, PCSGSideNone},
-    [PCSGSettingIndexFlexDups] =
-        {"Duplicates:", flex_dups_text, PCSG_ROW(filter.flex_dups), 0, PCSGFlexDupsCount,
-         PCSGRowEnum, PCSGSideNone},
-    [PCSGSettingIndexShowNumeric] =
-        {"Numbers:", hide_show_text, PCSG_ROW(filter.show_numeric), 0, HIDE_SHOW_COUNT,
-         PCSGRowBool, PCSGSideNone},
-    [PCSGSettingIndexShowTone] =
-        {"Tone only:", hide_show_text, PCSG_ROW(filter.show_tone), 0, HIDE_SHOW_COUNT,
-         PCSGRowBool, PCSGSideNone},
-    [PCSGSettingIndexShowBinary] =
-        {"Binary:", hide_show_text, PCSG_ROW(filter.show_binary), 0, HIDE_SHOW_COUNT,
-         PCSGRowBool, PCSGSideNone},
-    [PCSGSettingIndexFlexEncrypted] =
-        {"Encrypted:", hide_show_text, PCSG_ROW(filter.hide_encrypted), 0, HIDE_SHOW_COUNT,
-         PCSGRowBoolInv, PCSGSideNone},
-    // Hide = discard messages that could not be fully decoded.
-    [PCSGSettingIndexFlexPartial] =
-        {"Partial Msgs:", hide_show_text, PCSG_ROW(filter.hide_partial), 0, HIDE_SHOW_COUNT,
-         PCSGRowBoolInv, PCSGSideNone},
+    // A door, as HUD options is. Two values so the list draws its own arrow.
+    [PCSGSettingIndexFilter] = {NULL, NULL, 0, 0, 0, PCSGRowNone, PCSGSideNone},
     // Applies from the next receive session.
     [PCSGSettingIndexLogging] =
         {"Logging:", logging_text, PCSG_ROW(filter.log_temp), 0, LOGGING_COUNT, PCSGRowBool,
@@ -424,19 +311,6 @@ static const PCSGConfigRow pcsg_config_rows[] = {
     [PCSGSettingIndexToneSpread] =
         {"Signal Spread:", tone_spread_text, PCSG_ROW(filter.tone_spread), 0,
          PCSGToneSpreadCount, PCSGRowEnum, PCSGSideRxRestart},
-    [PCSGSettingIndexCapcodeFilter] =
-        {"Cap. Filter:", capcode_filter_text, PCSG_ROW(filter.capcode_filter), 0,
-         PCSGCapcodeFilterCount, PCSGRowEnum, PCSGSideCapcodeMax},
-    [PCSGSettingIndexRicFilter] =
-        {"RIC Filter:", capcode_filter_text, PCSG_ROW(filter.ric_filter), 0,
-         PCSGCapcodeFilterCount, PCSGRowEnum, PCSGSideRicMax},
-    [PCSGSettingIndexFlexPhase] =
-        {"FLEX Phase:", phase_filter_text, PCSG_ROW(filter.phase_filter), 0,
-         PCSGPhaseFilterCount, PCSGRowEnum, PCSGSideNone},
-    // Stops before the alert modes: a frame is not an address to alert on.
-    [PCSGSettingIndexFrameFilter] =
-        {"Frame Filter:", capcode_filter_text, PCSG_ROW(filter.frame_filter), 0,
-         PCSG_FRAME_FILTER_COUNT, PCSGRowEnum, PCSGSideFrameMax},
     // Debug: record the raw FLEX4 sample stream to SD for offline analysis.
     [PCSGSettingIndexRawCapture] =
         {"Raw Capture:", raw_capture_text, PCSG_ROW(filter.raw_capture), 0, RAW_CAPTURE_COUNT,
@@ -493,15 +367,6 @@ static void pcsg_config_row_changed(VariableItem* item) {
     }
 
     switch(row->side) {
-    case PCSGSideCapcodeMax:
-        pocsag_pager_scene_receiver_config_update_capcode_max(app);
-        break;
-    case PCSGSideRicMax:
-        pocsag_pager_scene_receiver_config_update_ric_max(app);
-        break;
-    case PCSGSideFrameMax:
-        pocsag_pager_scene_receiver_config_update_frame_max(app);
-        break;
     case PCSGSideAlert:
         pcsg_classic_alert_reset(app);
         break;
@@ -523,6 +388,12 @@ static void pocsag_pager_scene_receiver_config_hud_changed(VariableItem* item) {
     view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingHud);
 }
 
+static void pocsag_pager_scene_receiver_config_filter_changed(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    variable_item_set_current_value_index(item, 0);
+    view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingFilter);
+}
+
 static void pcsg_config_row_add(POCSAGPagerApp* app, uint8_t index) {
     const PCSGConfigRow* row = &pcsg_config_rows[index];
     VariableItem* item = variable_item_list_add(
@@ -540,34 +411,14 @@ static void
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingLock);
     } else if(index == PCSGSettingIndexHud) {
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingHud);
+    } else if(index == PCSGSettingIndexFilter) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingFilter);
     } else if(index == PCSGSettingIndexFrequency) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, PCSGCustomEventSceneSettingFrequency);
-    } else if(index == PCSGSettingIndexCapcodeMin) {
-        view_dispatcher_send_custom_event(
-            app->view_dispatcher, PCSGCustomEventSceneSettingCapcodeMin);
-    } else if(
-        index == PCSGSettingIndexCapcodeMax &&
-        pcsg_config_filter_uses_max(app->filter.capcode_filter)) {
-        view_dispatcher_send_custom_event(
-            app->view_dispatcher, PCSGCustomEventSceneSettingCapcodeMax);
     } else if(index == PCSGSettingIndexFreqCorr) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, PCSGCustomEventSceneSettingFreqCorr);
-    } else if(index == PCSGSettingIndexRicMin) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingRicMin);
-    } else if(
-        index == PCSGSettingIndexRicMax &&
-        pcsg_config_filter_uses_max(app->filter.ric_filter)) {
-        view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingRicMax);
-    } else if(index == PCSGSettingIndexFrameMin) {
-        view_dispatcher_send_custom_event(
-            app->view_dispatcher, PCSGCustomEventSceneSettingFrameMin);
-    } else if(
-        index == PCSGSettingIndexFrameMax &&
-        app->filter.frame_filter == PCSGCapcodeFilterRange) {
-        view_dispatcher_send_custom_event(
-            app->view_dispatcher, PCSGCustomEventSceneSettingFrameMax);
     }
 }
 
@@ -599,15 +450,17 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_text(
         item, subghz_setting_get_preset_name(app->setting, value_index));
 
-    // One Hide/Show per FLEX page kind, replacing the old combined type
-    // filter. Duplicates keeps its third CAPS choice.
-    pcsg_config_row_add(app, PCSGSettingIndexShowAlpha);
-    pcsg_config_row_add(app, PCSGSettingIndexFlexDups);
-    pcsg_config_row_add(app, PCSGSettingIndexShowNumeric);
-    pcsg_config_row_add(app, PCSGSettingIndexShowTone);
-    pcsg_config_row_add(app, PCSGSettingIndexShowBinary);
-    pcsg_config_row_add(app, PCSGSettingIndexFlexEncrypted);
-    pcsg_config_row_add(app, PCSGSettingIndexFlexPartial);
+    // What reaches the message list, behind a door of its own: page kinds,
+    // duplicates, capcode/RIC/frame ranges and the phase.
+    item = variable_item_list_add(
+        app->variable_item_list,
+        "Filtering",
+        2,
+        pocsag_pager_scene_receiver_config_filter_changed,
+        app);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, "");
+
     pcsg_config_row_add(app, PCSGSettingIndexLogging);
     pcsg_config_row_add(app, PCSGSettingIndexAutoReceive);
     pcsg_config_row_add(app, PCSGSettingIndexAlert);
@@ -620,30 +473,6 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     pcsg_config_row_add(app, PCSGSettingIndexToneVolume);
     pcsg_config_row_add(app, PCSGSettingIndexTonePitch);
     pcsg_config_row_add(app, PCSGSettingIndexToneSpread);
-    pcsg_config_row_add(app, PCSGSettingIndexCapcodeFilter);
-
-    item = variable_item_list_add(app->variable_item_list, "Capcode:", 1, NULL, app);
-    pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.capcode_min);
-
-    variable_item_list_add(app->variable_item_list, "Cap. Max:", 1, NULL, app);
-    pocsag_pager_scene_receiver_config_update_capcode_max(app);
-
-    pcsg_config_row_add(app, PCSGSettingIndexRicFilter);
-
-    item = variable_item_list_add(app->variable_item_list, "RIC:", 1, NULL, app);
-    pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.ric_min);
-
-    variable_item_list_add(app->variable_item_list, "RIC Max:", 1, NULL, app);
-    pocsag_pager_scene_receiver_config_update_ric_max(app);
-
-    pcsg_config_row_add(app, PCSGSettingIndexFlexPhase);
-    pcsg_config_row_add(app, PCSGSettingIndexFrameFilter);
-
-    item = variable_item_list_add(app->variable_item_list, "Frame:", 1, NULL, app);
-    pocsag_pager_scene_receiver_config_set_capcode_text(item, app->filter.frame_min);
-
-    variable_item_list_add(app->variable_item_list, "Frame Max:", 1, NULL, app);
-    pocsag_pager_scene_receiver_config_update_frame_max(app);
 
     item = variable_item_list_add(
         app->variable_item_list,
@@ -701,6 +530,9 @@ bool pocsag_pager_scene_receiver_config_on_event(void* context, SceneManagerEven
         } else if(event.event == PCSGCustomEventSceneSettingHud) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneHudConfig);
             consumed = true;
+        } else if(event.event == PCSGCustomEventSceneSettingFilter) {
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneFilterConfig);
+            consumed = true;
         } else if(event.event == PCSGCustomEventSceneSettingFreqCorr) {
             scene_manager_set_scene_state(
                 app->scene_manager, POCSAGPagerSceneCapcodeInput, PCSGNumberFieldFreqCorrection);
@@ -709,28 +541,6 @@ bool pocsag_pager_scene_receiver_config_on_event(void* context, SceneManagerEven
         } else if(event.event == PCSGCustomEventSceneSettingFrequency) {
             scene_manager_set_scene_state(
                 app->scene_manager, POCSAGPagerSceneCapcodeInput, PCSGNumberFieldRxFrequency);
-            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneCapcodeInput);
-            consumed = true;
-        } else if(
-            event.event == PCSGCustomEventSceneSettingCapcodeMin ||
-            event.event == PCSGCustomEventSceneSettingCapcodeMax ||
-            event.event == PCSGCustomEventSceneSettingFrameMin ||
-            event.event == PCSGCustomEventSceneSettingFrameMax ||
-            event.event == PCSGCustomEventSceneSettingRicMin ||
-            event.event == PCSGCustomEventSceneSettingRicMax) {
-            PCSGNumberField field = PCSGNumberFieldCapcodeMin;
-            if(event.event == PCSGCustomEventSceneSettingCapcodeMax) {
-                field = PCSGNumberFieldCapcodeMax;
-            } else if(event.event == PCSGCustomEventSceneSettingRicMin) {
-                field = PCSGNumberFieldRicMin;
-            } else if(event.event == PCSGCustomEventSceneSettingRicMax) {
-                field = PCSGNumberFieldRicMax;
-            } else if(event.event == PCSGCustomEventSceneSettingFrameMin) {
-                field = PCSGNumberFieldFrameMin;
-            } else if(event.event == PCSGCustomEventSceneSettingFrameMax) {
-                field = PCSGNumberFieldFrameMax;
-            }
-            scene_manager_set_scene_state(app->scene_manager, POCSAGPagerSceneCapcodeInput, field);
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneCapcodeInput);
             consumed = true;
         }
