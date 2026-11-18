@@ -598,10 +598,15 @@ modem - `+READY: flextx 1` is sent when the link comes up.
 | `AT+SEND` | transmit the current message again |
 | `AT+ABORT` | stop a transmission |
 
-A quoted argument keeps any commas inside it, and `\` escapes a quote, so a
-message can carry both. Error codes: 1 not an `AT` line, 2 unknown command,
-3 bad argument, 4 capcode out of range, 5 already transmitting, 6 the
-transmitter refused the configuration, 7 line too long.
+A quoted argument keeps any commas inside it, so a message can carry them.
+Inside the quotes `\` is the escape, which means **a literal backslash has to
+be sent doubled** and a quote as `\"`; a lone backslash is swallowed and the
+message arrives a character short. Nothing else needs escaping - the whole
+printable ASCII range has been sent through and come back unchanged.
+
+Error codes: 1 not an `AT` line, 2 unknown command, 3 bad argument, 4 capcode
+out of range, 5 already transmitting, 6 the transmitter refused the
+configuration, 7 line too long.
 
 `AT+TIME` is what makes the PC the network's clock: with it, the transmitted
 time and date come from whatever the host says rather than from the Flipper's
