@@ -173,6 +173,17 @@ static void pcsg_alert_row_changed(VariableItem* item) {
     }
 }
 
+/*
+ * Nothing here opens a scene, but the list is shared and its reset frees only
+ * the items: the enter callback outlives the scene that set it. Without one of
+ * our own, OK on a row would run the settings list's handler against these
+ * indices. NULL is not an option - the module furi_checks it.
+ */
+static void pcsg_alert_enter_callback(void* context, uint32_t index) {
+    UNUSED(context);
+    UNUSED(index);
+}
+
 void pocsag_pager_scene_alert_config_on_enter(void* context) {
     POCSAGPagerApp* app = context;
 
@@ -198,7 +209,7 @@ void pocsag_pager_scene_alert_config_on_enter(void* context) {
         variable_item_set_current_value_text(item, row->text[value]);
     }
 
-    variable_item_list_set_enter_callback(app->variable_item_list, NULL, app);
+    variable_item_list_set_enter_callback(app->variable_item_list, pcsg_alert_enter_callback, app);
     variable_item_list_set_selected_item(
         app->variable_item_list, app->alert_config_selected_index);
     view_dispatcher_switch_to_view(app->view_dispatcher, POCSAGPagerViewVariableItemList);

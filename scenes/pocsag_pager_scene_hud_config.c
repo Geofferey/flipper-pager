@@ -171,6 +171,12 @@ static void pocsag_pager_scene_hud_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, row->text[value]);
 }
 
+// NULL is not an option here: the module furi_checks the callback.
+static void pcsg_hud_enter_callback(void* context, uint32_t index) {
+    UNUSED(context);
+    UNUSED(index);
+}
+
 void pocsag_pager_scene_hud_config_on_enter(void* context) {
     POCSAGPagerApp* app = context;
 
@@ -218,6 +224,13 @@ void pocsag_pager_scene_hud_config_on_enter(void* context) {
         variable_item_set_current_value_text(item, row->text[*field]);
     }
 
+    /*
+     * Every row here is stepped in place, but the list is shared and its reset
+     * frees only the items: without an enter callback of our own, OK would run
+     * the settings list's handler against these indices and open whatever row
+     * happened to share a number.
+     */
+    variable_item_list_set_enter_callback(app->variable_item_list, pcsg_hud_enter_callback, app);
     variable_item_list_set_selected_item(app->variable_item_list, app->hud_config_selected_index);
     view_dispatcher_switch_to_view(app->view_dispatcher, POCSAGPagerViewVariableItemList);
 }
