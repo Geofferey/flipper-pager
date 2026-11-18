@@ -27,7 +27,12 @@ uint16_t pcsg_log_get_count(PCSGLog* instance);
 bool pcsg_log_is_truncated(PCSGLog* instance);
 
 /** List label for a message, using the same formatter as live history. */
-void pcsg_log_get_label(PCSGLog* instance, uint16_t idx, FuriString* label, bool preview);
+void pcsg_log_get_label(
+    PCSGLog* instance,
+    uint16_t idx,
+    FuriString* label,
+    bool preview,
+    uint8_t* split);
 
 /** Escaped header/message for the info view; caller frees the returned entry. */
 bool pcsg_log_get_entry(PCSGLog* instance, uint16_t idx, PCSGHistoryEntry* entry);

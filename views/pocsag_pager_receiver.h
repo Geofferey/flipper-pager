@@ -45,12 +45,17 @@ void pcsg_view_receiver_set_scroll(PCSGReceiver* pcsg_receiver, bool enable);
  *  on screen is too long to fit. */
 void pcsg_view_receiver_scroll_step(PCSGReceiver* pcsg_receiver);
 
-/** Fills a list row's label and icon type; the view keeps no copies. */
+/**
+ * Fills a list row's label and icon type; the view keeps no copies. `split`
+ * is the length of the label's header, which stays put while the rest of the
+ * row scrolls.
+ */
 typedef void (*PCSGReceiverItemCallback)(
     void* context,
     uint16_t idx,
     FuriString* label,
-    uint8_t* type);
+    uint8_t* type,
+    uint8_t* split);
 
 void pcsg_view_receiver_set_item_callback(
     PCSGReceiver* pcsg_receiver,

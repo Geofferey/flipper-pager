@@ -199,10 +199,11 @@ static void pocsag_pager_scene_receiver_item_callback(
     void* context,
     uint16_t idx,
     FuriString* label,
-    uint8_t* type) {
+    uint8_t* type,
+    uint8_t* split) {
     POCSAGPagerApp* app = context;
     pcsg_history_get_text_item_menu(
-        app->txrx->history, label, idx, app->filter.preview != PCSGPreviewHide);
+        app->txrx->history, label, idx, app->filter.preview != PCSGPreviewHide, split);
     *type = pcsg_history_get_type_protocol(app->txrx->history, idx);
 }
 

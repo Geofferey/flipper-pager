@@ -47,13 +47,18 @@ bool pcsg_history_split_line(char* line, char* fields[PCSGLogFieldCount]);
  * Build a one-line list label directly from escaped log fields. Without
  * `preview` the message is left off from its colon onwards, keeping only a
  * three-capital page tag such as FLEX's "ALN" where one is present.
+ *
+ * `split`, when asked for, comes back as the length of the header - the
+ * address and that page tag - which is the part of the row that stays put
+ * while the message behind it scrolls.
  */
 void pcsg_history_make_label_escaped(
     char* label,
     size_t size,
     const char* ric,
     const char* message,
-    bool preview);
+    bool preview,
+    uint8_t* split);
 
 /** One owned log line with pointers into its escaped Ric and Message fields. */
 typedef struct {
@@ -165,12 +170,14 @@ uint8_t pcsg_history_get_type_protocol(PCSGHistory* instance, uint16_t idx);
  * @param output    - FuriString* output
  * @param idx       - record index
  * @param preview   - include the message text, not only the header
+ * @param split     - out: header length, or NULL
  */
 void pcsg_history_get_text_item_menu(
     PCSGHistory* instance,
     FuriString* output,
     uint16_t idx,
-    bool preview);
+    bool preview,
+    uint8_t* split);
 
 /** Number of decoded entries written to this session log, including hidden ones. */
 uint32_t pcsg_history_get_total(PCSGHistory* instance);

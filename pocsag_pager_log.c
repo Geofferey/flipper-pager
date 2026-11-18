@@ -28,6 +28,7 @@ typedef struct {
     uint16_t idx;
     // Part of the key: a label built with the preview off is a different row.
     bool preview;
+    uint8_t split;
     char label[PCSG_HISTORY_LABEL_SIZE];
 } PCSGLogLabel;
 
@@ -268,12 +269,18 @@ static char* pcsg_log_read_line(PCSGLog* instance, uint16_t idx, uint32_t limit)
     return buffer;
 }
 
-void pcsg_log_get_label(PCSGLog* instance, uint16_t idx, FuriString* label, bool preview) {
+void pcsg_log_get_label(
+    PCSGLog* instance,
+    uint16_t idx,
+    FuriString* label,
+    bool preview,
+    uint8_t* split) {
     furi_assert(instance);
     for(size_t i = 0; i < PCSG_LOG_LABEL_CACHE; i++) {
         if(instance->labels[i].valid && instance->labels[i].idx == idx &&
            instance->labels[i].preview == preview) {
             furi_string_set_str(label, instance->labels[i].label);
+            if(split) *split = instance->labels[i].split;
             return;
         }
     }
@@ -293,10 +300,12 @@ void pcsg_log_get_label(PCSGLog* instance, uint16_t idx, FuriString* label, bool
             sizeof(slot->label),
             fields[PCSGLogFieldRic],
             fields[PCSGLogFieldMessage],
-            preview);
+            preview,
+            &slot->split);
     }
     free(line);
     furi_string_set_str(label, slot->label);
+    if(split) *split = slot->split;
 }
 
 bool pcsg_log_get_address(

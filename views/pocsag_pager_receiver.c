@@ -52,6 +52,8 @@ typedef struct {
     FuriString* history_stat_str;
     FuriString* time_str;
     FuriString* row_str;
+    // The part of a row behind its header, which is what scrolls.
+    FuriString* tail_str;
     PCSGReceiverItemCallback item_callback;
     void* item_context;
     uint16_t idx;
@@ -412,10 +414,29 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
     for(size_t i = 0; i < MIN(model->history_item, MENU_ITEMS) && model->item_callback; ++i) {
         size_t idx = CLAMP((uint16_t)(i + model->list_offset), model->history_item, 0);
         uint8_t type = 0;
-        model->item_callback(model->item_context, idx, str_buff, &type);
+        uint8_t split = 0;
+        model->item_callback(model->item_context, idx, str_buff, &type, &split);
         furi_string_replace_all(str_buff, "#", "");
-        if(model->scroll_enabled) {
-            const uint8_t row_span = pcsg_view_receiver_scroll_span(canvas, str_buff, row_px);
+
+        /*
+         * The header - the address and the page kind - stays where it is and
+         * only what follows it walks, so the row can be read while it moves.
+         * Split before anything is trimmed, the offsets being into the label
+         * as it was built.
+         */
+        const bool walk = model->scroll_enabled && split < furi_string_size(str_buff);
+        uint8_t head_px = 0;
+        if(walk) {
+            furi_string_set_n(
+                model->tail_str, str_buff, split, furi_string_size(str_buff) - split);
+            furi_string_left(str_buff, split);
+            head_px = (uint8_t)canvas_string_width(canvas, furi_string_get_cstr(str_buff));
+        }
+        const uint8_t tail_px = row_px > head_px ? (uint8_t)(row_px - head_px) : 0U;
+        FuriString* body = walk ? model->tail_str : str_buff;
+
+        if(walk) {
+            const uint8_t row_span = pcsg_view_receiver_scroll_span(canvas, body, tail_px);
             if(row_span > span) span = row_span;
             // Held at the top for the first steps, then walked to this row's
             // own end and held there while a longer one catches up.
@@ -424,9 +445,10 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
                 offset = (uint8_t)(model->scroll_pos - PCSG_SCROLL_HOLD);
                 if(offset > row_span) offset = row_span;
             }
-            if(offset) furi_string_right(str_buff, offset);
+            if(offset) furi_string_right(body, offset);
         }
-        elements_string_fit_width(canvas, str_buff, row_px);
+        elements_string_fit_width(canvas, body, tail_px);
+
         if(model->idx == idx) {
             pcsg_view_receiver_draw_frame(canvas, i, scrollbar);
         } else {
@@ -434,7 +456,11 @@ void pcsg_view_receiver_draw(Canvas* canvas, PCSGReceiverModel* model) {
         }
         if(type >= COUNT_OF(ReceiverItemIcons)) type = 0;
         canvas_draw_icon(canvas, 4, 2 + i * FRAME_HEIGHT, ReceiverItemIcons[type]);
-        canvas_draw_str(canvas, 15, 9 + i * FRAME_HEIGHT, furi_string_get_cstr(str_buff));
+        if(walk) {
+            canvas_draw_str(canvas, 15, 9 + i * FRAME_HEIGHT, furi_string_get_cstr(str_buff));
+        }
+        canvas_draw_str(
+            canvas, (uint8_t)(15 + head_px), 9 + i * FRAME_HEIGHT, furi_string_get_cstr(body));
         furi_string_reset(str_buff);
     }
     // What the step needs and only the draw knows. Writing it here does not
@@ -724,6 +750,7 @@ PCSGReceiver* pcsg_view_receiver_alloc() {
             model->history_stat_str = furi_string_alloc();
             model->time_str = furi_string_alloc();
             model->row_str = furi_string_alloc();
+            model->tail_str = furi_string_alloc();
             model->bar_show = PCSGReceiverBarShowDefault;
         },
         true);
@@ -746,6 +773,7 @@ void pcsg_view_receiver_free(PCSGReceiver* pcsg_receiver) {
             furi_string_free(model->history_stat_str);
             furi_string_free(model->time_str);
             furi_string_free(model->row_str);
+            furi_string_free(model->tail_str);
         },
         false);
     furi_timer_free(pcsg_receiver->timer);

@@ -151,11 +151,13 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   `Scroll`. `Hide` leaves each row its header and drops the message text from
   the colon onwards, so a FLEX row reads `123456 ALN` and a POCSAG one stops
   after its function; the message is still there, one OK away. `Show` fills the
-  row and truncates. `Scroll` fills it and then walks all four rows on screen
-  along together, a character every 300 ms, each stopping at its own end and
-  holding there while a longer one catches up, then starting over - a row short
-  enough to fit never moves, and a list where none overflows is not repainted
-  for it. `Alerting` holds how a message announces itself and what the
+  row and truncates. `Scroll` fills it and then walks the message along inside
+  the room left over, on all four rows at once: the header stays where it is,
+  so `123456 ALN:` and a POCSAG row's address and function can still be read
+  while the text behind them moves. A character every 300 ms, each row stopping
+  at its own end and holding there while a longer one catches up, then starting
+  over - a row short enough to fit never moves, and a list where none overflows
+  is not repainted for it. `Alerting` holds how a message announces itself and what the
   radio sounds like - the alert and its tone, the receive and decode LEDs, and
   the signal sound with its volume, pitch and spread. `Debug` holds the rows for
   working on the app rather than using it - the crystal `Correction`, `Raw

@@ -35,6 +35,8 @@ typedef struct {
     // Part of the key, not of the row: the same message reads differently with
     // the preview off, so a label built the other way is a miss, not a hit.
     bool preview;
+    // Length of the header, the part of the row that does not scroll.
+    uint8_t split;
     char label[PCSG_HISTORY_LABEL_SIZE];
 } PCSGHistoryLabel;
 
@@ -192,14 +194,45 @@ static bool pcsg_history_open_log(PCSGHistory* instance, uint32_t frequency) {
     return instance->file_open && instance->index_open;
 }
 
-// Build the same label directly from escaped log fields without allocating
-// complete unescaped copies of the header and message.
+// Unescape `text` onto the end of `label`, collapsing whitespace, and return
+// the new length. Markers and runs of spaces are dropped as they are met.
+static size_t
+    pcsg_history_append_escaped(char* label, size_t size, const char* text, size_t length) {
+    while(*text && length + 1U < size) {
+        char c = *text++;
+        if(c == '\\' && *text) {
+            c = *text++;
+            if(c == 'n') c = '\n';
+            else if(c == 'r') c = '\r';
+            else if(c == 't') c = '\t';
+            else if(c == 'e') c = '\e';
+        }
+        if(c == '\e' || c == '#') continue;
+        if(c == '\n' || c == '\r' || c == '\t') c = ' ';
+        if(c == ' ' && (length == 0 || label[length - 1] == ' ')) continue;
+        label[length++] = c;
+    }
+    return length;
+}
+
+/*
+ * Build the same label directly from escaped log fields without allocating
+ * complete unescaped copies of the header and message.
+ *
+ * `split` comes back as the length of the header: the address, and the page
+ * kind where the protocol writes one. FLEX puts that in front of the message
+ * as "ALN: ", so the tag joins the header and the text after its colon is the
+ * message; POCSAG writes no tag at all and its whole Ric field is the header.
+ * Three capitals and a colon is what tells one from the other, so a POCSAG
+ * message opening "OK: on my way" is not mistaken for a tag.
+ */
 void pcsg_history_make_label_escaped(
     char* label,
     size_t size,
     const char* ric,
     const char* message,
-    bool preview) {
+    bool preview,
+    uint8_t* split) {
     furi_assert(size);
     const char* newline = strstr(ric, "\\n");
     if(newline && newline[2]) ric = newline + 2;
@@ -208,44 +241,26 @@ void pcsg_history_make_label_escaped(
         while(*ric == '0' && ric[1] >= '0' && ric[1] <= '9') ric++;
     }
 
-    size_t length = 0;
-    char tag[4];
-    const char* parts[] = {ric, message};
-    for(size_t part = 0; part < COUNT_OF(parts); part++) {
-        const char* text = parts[part];
-        /*
-         * With the preview off nothing of the message is shown from its colon
-         * onwards. FLEX writes the page kind in front of it as "ALN: ", which
-         * is worth keeping; three capitals and a colon, so a POCSAG message
-         * opening with a word and a colon is not taken for one, that protocol
-         * putting no tag there at all.
-         */
-        if(part == 1U && !preview) {
-            // Letters first: each test stops at a terminator, so a message of
-            // fewer than four characters never reaches the read of text[3].
-            if(text[0] < 'A' || text[0] > 'Z' || text[1] < 'A' || text[1] > 'Z' ||
-               text[2] < 'A' || text[2] > 'Z' || text[3] != ':') {
-                break;
-            }
-            memcpy(tag, text, 3);
-            tag[3] = '\0';
-            text = tag;
-        }
-        while(*text && length + 1U < size) {
-            char c = *text++;
-            if(c == '\\' && *text) {
-                c = *text++;
-                if(c == 'n') c = '\n';
-                else if(c == 'r') c = '\r';
-                else if(c == 't') c = '\t';
-                else if(c == 'e') c = '\e';
-            }
-            if(c == '\e' || c == '#') continue;
-            if(c == '\n' || c == '\r' || c == '\t') c = ' ';
-            if(c == ' ' && (length == 0 || label[length - 1] == ' ')) continue;
-            label[length++] = c;
-        }
+    size_t length = pcsg_history_append_escaped(label, size, ric, 0);
+
+    // Letters first: each test stops at a terminator, so a message of fewer
+    // than four characters never reaches the read of message[3].
+    const bool tagged = message[0] >= 'A' && message[0] <= 'Z' && message[1] >= 'A' &&
+                        message[1] <= 'Z' && message[2] >= 'A' && message[2] <= 'Z' &&
+                        message[3] == ':';
+    if(tagged) {
+        // The colon belongs to the header, but is not shown when there is
+        // nothing behind it for it to introduce.
+        char tag[5];
+        const size_t keep = preview ? 4U : 3U;
+        memcpy(tag, message, keep);
+        tag[keep] = '\0';
+        length = pcsg_history_append_escaped(label, size, tag, length);
+        message += 4;
     }
+
+    if(split) *split = length > UINT8_MAX ? UINT8_MAX : (uint8_t)length;
+    if(preview) length = pcsg_history_append_escaped(label, size, message, length);
     label[length] = '\0';
 }
 
@@ -368,7 +383,8 @@ void pcsg_history_get_text_item_menu(
     PCSGHistory* instance,
     FuriString* output,
     uint16_t idx,
-    bool preview) {
+    bool preview,
+    uint8_t* split) {
     furi_assert(instance);
     furi_mutex_acquire(instance->mutex, FuriWaitForever);
     PCSGHistoryLabel* cached = NULL;
@@ -409,13 +425,19 @@ void pcsg_history_get_text_item_menu(
                     sizeof(slot->label),
                     fields[PCSGLogFieldRic],
                     fields[PCSGLogFieldMessage],
-                    preview);
+                    preview,
+                    &slot->split);
             }
             cached = slot;
         }
     }
-    if(cached) furi_string_set_str(output, cached->label);
-    else furi_string_reset(output);
+    if(cached) {
+        furi_string_set_str(output, cached->label);
+        if(split) *split = cached->split;
+    } else {
+        furi_string_reset(output);
+        if(split) *split = 0;
+    }
     furi_mutex_release(instance->mutex);
 }
 
@@ -689,7 +711,8 @@ PCSGHistoryStateAddKey
             sizeof(slot->label),
             furi_string_get_cstr(instance->ric),
             furi_string_get_cstr(instance->message),
-            true);
+            true,
+            &slot->split);
 
         instance->count++;
         state = PCSGHistoryStateAddKeyNewDada;
