@@ -298,6 +298,19 @@ static void pcsg_serial_execute(PCSGSerial* serial, char* line) {
         return;
     }
 
+    // The two that act rather than set, and so carry no argument. They have
+    // to be met before the '=' below, which would otherwise turn both into
+    // "unknown command" - including the one that clears a stuck radio.
+    if(pcsg_serial_is(rest, "SEND")) {
+        pcsg_serial_send(serial);
+        return;
+    }
+    if(pcsg_serial_is(rest, "ABORT")) {
+        pcsg_tx_stop(app);
+        pcsg_serial_ok(serial);
+        return;
+    }
+
     // Everything else is NAME=arg[,arg...].
     char* equals = strchr((char*)rest, '=');
     if(!equals) {
@@ -420,11 +433,6 @@ static void pcsg_serial_execute(PCSGSerial* serial, char* line) {
         config->message_mode = PagerTxMessageTyped;
         pcsg_serial_send(serial);
         return;
-    } else if(pcsg_serial_is(rest, "SEND")) {
-        pcsg_serial_send(serial);
-        return;
-    } else if(pcsg_serial_is(rest, "ABORT")) {
-        pcsg_tx_stop(app);
     } else {
         pcsg_serial_err(serial, 2, "unknown command");
         return;
