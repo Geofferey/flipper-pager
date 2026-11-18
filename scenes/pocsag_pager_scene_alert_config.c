@@ -166,7 +166,7 @@ static void pcsg_alert_row_changed(VariableItem* item) {
         pcsg_classic_alert_reset(app);
         break;
     case PCSGAlertSideRxRestart:
-        app->txrx->rx_restart = true;
+        pcsg_rx_restart_request(app);
         break;
     default:
         break;

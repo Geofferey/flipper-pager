@@ -81,7 +81,7 @@ static void pocsag_pager_scene_receiver_config_set_frequency(VariableItem* item)
 
     app->txrx->preset->frequency = subghz_setting_get_frequency(app->setting, index);
     pcsg_config_show_frequency(item, app->txrx->preset->frequency);
-    app->txrx->rx_restart = true;
+    pcsg_rx_restart_request(app);
 }
 
 static void pocsag_pager_scene_receiver_config_set_preset(VariableItem* item) {
@@ -95,7 +95,7 @@ static void pocsag_pager_scene_receiver_config_set_preset(VariableItem* item) {
         app->txrx->preset->frequency,
         subghz_setting_get_preset_data(app->setting, index),
         subghz_setting_get_preset_data_size(app->setting, index));
-    app->txrx->rx_restart = true;
+    pcsg_rx_restart_request(app);
 }
 
 

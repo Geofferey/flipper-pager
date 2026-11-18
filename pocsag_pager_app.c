@@ -26,6 +26,9 @@ static void pocsag_pager_app_tick_event_callback(void* context) {
     POCSAGPagerApp* app = context;
 #ifndef PCSG_TX_APP
     pcsg_classic_alert_tick(app);
+    // A settings change that needs the radio, applied wherever the user is
+    // rather than on the way back to the message list.
+    pcsg_rx_restart_poll(app);
     /*
      * The receive blink says the radio is listening, which has nothing to do
      * with what is on screen, so it is driven here rather than from the

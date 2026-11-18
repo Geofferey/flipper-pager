@@ -156,6 +156,10 @@ void subghz_protocol_decoder_flex_reset_frame_timing(void* context);
  *  system words standing, for a session starting on a channel whose reading
  *  is being carried over. */
 void subghz_protocol_decoder_flex_reset_decode(void* context);
+/** The next frame comes from a different transmitter's grid, so its cycle
+ *  number is not the one before it plus however many have gone by. Carried
+ *  readings stand; only the hour's cycle-wrap is skipped once. */
+void subghz_protocol_decoder_flex_mark_frame_gap(void* context);
 /** Copy the most recent FIW timing; false until a valid FIW has arrived. */
 bool subghz_protocol_decoder_flex_get_frame_timing(void* context, FlexFrameTiming* timing);
 /** Copy what the network has said about itself; false until it has said

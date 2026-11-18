@@ -145,6 +145,11 @@ uint32_t pcsg_rx(POCSAGPagerApp* app, uint32_t frequency) {
      */
     if(app->filter.hud_freq_switch == PCSGHudFreqDiscard) {
         flex_sampler_reset_frame_timing(app->txrx->flex_sampler);
+    } else {
+        // Keeping the reading does not mean keeping the grid: the next frame
+        // is another transmitter's, and its cycle number read against the one
+        // before it would put the hour on by one.
+        flex_sampler_mark_frame_gap(app->txrx->flex_sampler);
     }
     // The sync sequence is restarted either way: it only guards against
     // setting the RTC twice from one frame, and that frame is now behind us.
@@ -171,6 +176,33 @@ void pcsg_idle(POCSAGPagerApp* app) {
     furi_assert(app->txrx->txrx_state != PCSGTxRxStateSleep);
     subghz_devices_idle(app->txrx->radio_device);
     app->txrx->txrx_state = PCSGTxRxStateIDLE;
+}
+
+// Long enough that stepping through a row's values with the arrows settles
+// before the radio is touched, short enough to feel immediate.
+#define PCSG_RX_RESTART_DEBOUNCE_MS 400U
+
+void pcsg_rx_restart_request(POCSAGPagerApp* app) {
+    furi_assert(app);
+    app->txrx->rx_restart = true;
+    app->txrx->rx_restart_due = furi_get_tick() + furi_ms_to_ticks(PCSG_RX_RESTART_DEBOUNCE_MS);
+}
+
+void pcsg_rx_restart_poll(POCSAGPagerApp* app) {
+    furi_assert(app);
+    if(!app->txrx->rx_restart) return;
+    // Not while stopped: entering the receiver starts the radio with whatever
+    // is set by then, which is the same thing arriving by another road.
+    if(app->txrx->txrx_state != PCSGTxRxStateRx) return;
+    if((int32_t)(furi_get_tick() - app->txrx->rx_restart_due) < 0) return;
+
+    app->txrx->rx_restart = false;
+    pcsg_rx_end(app);
+    pcsg_begin(
+        app,
+        subghz_setting_get_preset_data_by_name(
+            app->setting, furi_string_get_cstr(app->txrx->preset->name)));
+    pcsg_rx(app, app->txrx->preset->frequency);
 }
 
 void pcsg_rx_end(POCSAGPagerApp* app) {

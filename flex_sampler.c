@@ -718,6 +718,11 @@ void flex_sampler_reset_frame_timing(FlexSampler* instance) {
     subghz_protocol_decoder_flex_reset_frame_timing(instance->decoder);
 }
 
+void flex_sampler_mark_frame_gap(FlexSampler* instance) {
+    furi_assert(instance);
+    subghz_protocol_decoder_flex_mark_frame_gap(instance->decoder);
+}
+
 bool flex_sampler_get_frame_timing(const FlexSampler* instance, FlexFrameTiming* timing) {
     furi_assert(instance);
     return subghz_protocol_decoder_flex_get_frame_timing(instance->decoder, timing);

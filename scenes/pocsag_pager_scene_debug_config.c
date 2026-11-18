@@ -85,7 +85,7 @@ static void pcsg_debug_set_freq_corr(VariableItem* item) {
         -PCSG_FREQ_CORRECTION_LIST_MAX_HZ + index * PCSG_FREQ_CORRECTION_STEP_HZ;
     pcsg_debug_show_freq_corr(item, app->filter.frequency_correction_hz);
     // The receiver retunes with it, as changing the channel does.
-    app->txrx->rx_restart = true;
+    pcsg_rx_restart_request(app);
 }
 
 // The row being changed is always the selected one, which is how this finds
@@ -100,6 +100,9 @@ static void pcsg_debug_row_changed(VariableItem* item) {
     const uint8_t value = variable_item_get_current_value_index(item);
     variable_item_set_current_value_text(item, debug_on_off_text[value]);
     *((uint8_t*)app + row->offset) = value != 0U;
+    // All three are handed to the sampler when receiving starts, so they took
+    // effect on the next session rather than on the one being watched.
+    pcsg_rx_restart_request(app);
 }
 
 // OK on the correction types a value; the switches are stepped in place. The

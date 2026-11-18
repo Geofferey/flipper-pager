@@ -186,6 +186,9 @@ struct SubGhzProtocolDecoderFlex {
     volatile bool timing_chase;
     volatile uint8_t timing_clock;
     volatile uint8_t timing_zone;
+    /* The frame grid starts again: adopt the next frame's cycle without
+     * reading it against the stored one. */
+    volatile bool timing_regrid;
 
     /*
      * What the network says about itself. Published under its own sequence
@@ -344,6 +347,13 @@ static void flex_publish_timing(SubGhzProtocolDecoderFlex* instance) {
         // An hour with no trusted frame is too long a gap to carry an hour
         // across, but the zone the network named still stands.
         clock &= (uint8_t)~(FLEX_CLOCK_HOUR_MASK | FLEX_CLOCK_HAVE_HOUR);
+    } else if(instance->timing_regrid) {
+        /*
+         * A different transmitter's grid. Its cycle number says nothing about
+         * the one before it, so the wrap below would read a lower cycle as an
+         * hour having passed and put the clock an hour on.
+         */
+        instance->timing_regrid = false;
     } else if((clock & FLEX_CLOCK_HAVE_HOUR) && instance->cycle < instance->timing_cycle) {
         clock = (clock & ~FLEX_CLOCK_HOUR_MASK) | ((clock + 1U) & FLEX_CLOCK_HOUR_MASK) % 24U;
     }
@@ -403,6 +413,12 @@ void subghz_protocol_decoder_flex_free(void* context) {
  * itself. Kept apart so a receive session can start clean without dropping a
  * reading the HUD has been told to keep across a change of channel.
  */
+void subghz_protocol_decoder_flex_mark_frame_gap(void* context) {
+    furi_assert(context);
+    SubGhzProtocolDecoderFlex* instance = context;
+    instance->timing_regrid = true;
+}
+
 void subghz_protocol_decoder_flex_reset_decode(void* context) {
     furi_assert(context);
     SubGhzProtocolDecoderFlex* instance = context;

@@ -49,6 +49,10 @@ struct POCSAGPagerTxRx {
     // Set when Config changes frequency or preset; otherwise the receiver
     // keeps running when it is re-entered.
     bool rx_restart;
+    /** Tick at which a pending restart should happen. Settings that need the
+     *  radio set this a little ahead, so cycling through a row's values with
+     *  the arrows stops the radio once at the end rather than on every step. */
+    uint32_t rx_restart_due;
     // The speaker is held for the signal sound while receiving.
     bool speaker_on;
 
@@ -200,6 +204,13 @@ void pcsg_begin(POCSAGPagerApp* app, uint8_t* preset_data);
 uint32_t pcsg_rx(POCSAGPagerApp* app, uint32_t frequency);
 void pcsg_idle(POCSAGPagerApp* app);
 void pcsg_rx_end(POCSAGPagerApp* app);
+/** A setting the radio reads only when receiving starts has changed. Takes
+ *  effect shortly, wherever the user is, rather than on the way back to the
+ *  message list; calling it again pushes that moment out. */
+void pcsg_rx_restart_request(POCSAGPagerApp* app);
+/** Carry out a restart that has come due. From the app tick, so it happens
+ *  whichever scene is open. */
+void pcsg_rx_restart_poll(POCSAGPagerApp* app);
 void pcsg_sleep(POCSAGPagerApp* app);
 
 typedef enum {

@@ -94,7 +94,7 @@ static void pocsag_pager_scene_capcode_input_callback(void* context, int32_t num
         *pocsag_pager_scene_capcode_input_field(app) = number;
 #ifndef PCSG_TX_APP
         // Retune on returning to the receiver, as changing the channel does.
-        if(field == PCSGNumberFieldRxFrequency) app->txrx->rx_restart = true;
+        if(field == PCSGNumberFieldRxFrequency) pcsg_rx_restart_request(app);
 #endif
     }
 
