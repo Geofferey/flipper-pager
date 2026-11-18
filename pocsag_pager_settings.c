@@ -203,6 +203,7 @@ static const PCSGSetting pcsg_settings[] = {
     // steps over a line nobody asks for. These three replace it, and have to
     // go last because a key the file lacks ends every read after it.
     {"ShowAlpha", 0, PCSG_FIELD(filter.show_alpha), PCSGSetBool},
+    {"ShowPreview", 0, PCSG_FIELD(filter.show_preview), PCSGSetBool},
     {"ShowNumeric", 0, PCSG_FIELD(filter.show_numeric), PCSGSetBool},
     {"ShowTone", 0, PCSG_FIELD(filter.show_tone), PCSGSetBool},
     {"TxClockBiws", PCSG_TX_CLOCK_BOTH, PCSG_FIELD(tx_config.clock_biws), PCSGSetU32},

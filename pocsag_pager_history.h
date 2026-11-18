@@ -43,12 +43,17 @@ typedef enum {
 /** Split a log line in place. Returns false if fields are missing. */
 bool pcsg_history_split_line(char* line, char* fields[PCSGLogFieldCount]);
 
-/** Build a one-line list label directly from escaped log fields. */
+/**
+ * Build a one-line list label directly from escaped log fields. Without
+ * `preview` the message is left off from its colon onwards, keeping only a
+ * three-capital page tag such as FLEX's "ALN" where one is present.
+ */
 void pcsg_history_make_label_escaped(
     char* label,
     size_t size,
     const char* ric,
-    const char* message);
+    const char* message,
+    bool preview);
 
 /** One owned log line with pointers into its escaped Ric and Message fields. */
 typedef struct {
@@ -159,8 +164,13 @@ uint8_t pcsg_history_get_type_protocol(PCSGHistory* instance, uint16_t idx);
  * @param instance  - PCSGHistory instance
  * @param output    - FuriString* output
  * @param idx       - record index
+ * @param preview   - include the message text, not only the header
  */
-void pcsg_history_get_text_item_menu(PCSGHistory* instance, FuriString* output, uint16_t idx);
+void pcsg_history_get_text_item_menu(
+    PCSGHistory* instance,
+    FuriString* output,
+    uint16_t idx,
+    bool preview);
 
 /** Number of decoded entries written to this session log, including hidden ones. */
 uint32_t pcsg_history_get_total(PCSGHistory* instance);

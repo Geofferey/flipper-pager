@@ -145,9 +145,12 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
 - **Settings** is the same configuration, available before receiving: frequency,
   modulation, `Auto RX`, logging, and four doors into groups of their own.
   `Filtering` holds everything that decides which messages
-  reach the list - per-kind FLEX page visibility, duplicates, encrypted and
-  partial messages, the capcode, RIC and frame filters with their ranges, and
-  the FLEX phase. `Alerting` holds how a message announces itself and what the
+  reach the list, and how much of one it shows - `Preview`, per-kind FLEX page
+  visibility, duplicates, encrypted and partial messages, the capcode, RIC and
+  frame filters with their ranges, and the FLEX phase. `Preview: Hide` leaves
+  each row its header and drops the message text from the colon onwards, so a
+  FLEX row reads `123456 ALN` and a POCSAG one stops after its function; the
+  message itself is still there, one OK away. `Alerting` holds how a message announces itself and what the
   radio sounds like - the alert and its tone, the receive and decode LEDs, and
   the signal sound with its volume, pitch and spread. `Debug` holds the rows for
   working on the app rather than using it - the crystal `Correction`, `Raw

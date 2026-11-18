@@ -289,6 +289,7 @@ POCSAGPagerApp* pocsag_pager_app_alloc() {
 
     // Every FLEX page kind is shown until the user hides one.
     app->filter.show_alpha = true;
+    app->filter.show_preview = true;
     app->filter.show_numeric = true;
     app->filter.show_tone = true;
     app->filter.show_binary = true;

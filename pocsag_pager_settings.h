@@ -257,6 +257,8 @@ typedef struct {
     uint32_t ric_min;
     uint32_t ric_max;
     PCSGFlexDups flex_dups;
+    /** Whether a list row carries the message text after its header. */
+    bool show_preview;
     bool hide_encrypted;
     // Discard FLEX messages that could not be fully decoded (off by default).
     bool hide_partial;

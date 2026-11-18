@@ -9,6 +9,7 @@
  * added here must be added to the table and to on_enter in the same place.
  */
 enum PCSGFilterIndex {
+    PCSGFilterIndexPreview,
     PCSGFilterIndexShowAlpha,
     PCSGFilterIndexFlexDups,
     PCSGFilterIndexShowNumeric,
@@ -86,6 +87,10 @@ typedef struct {
 _Static_assert(sizeof(bool) == 1, "row fields are byte-wide");
 
 static const PCSGFilterRow pcsg_filter_rows[] = {
+    // Hide leaves a row its header and drops the message text behind it.
+    [PCSGFilterIndexPreview] =
+        {"Preview:", hide_show_text, PCSG_FILTER_ROW(filter.show_preview), HIDE_SHOW_COUNT,
+         PCSGFilterRowBool, PCSGFilterSideNone},
     [PCSGFilterIndexShowAlpha] =
         {"Alphanumeric:", hide_show_text, PCSG_FILTER_ROW(filter.show_alpha), HIDE_SHOW_COUNT,
          PCSGFilterRowBool, PCSGFilterSideNone},

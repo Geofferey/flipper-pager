@@ -32,6 +32,9 @@ typedef struct {
     bool valid;
     uint16_t idx;
     uint8_t type;
+    // Part of the key, not of the row: the same message reads differently with
+    // the preview off, so a label built the other way is a miss, not a hit.
+    bool preview;
     char label[PCSG_HISTORY_LABEL_SIZE];
 } PCSGHistoryLabel;
 
@@ -195,7 +198,8 @@ void pcsg_history_make_label_escaped(
     char* label,
     size_t size,
     const char* ric,
-    const char* message) {
+    const char* message,
+    bool preview) {
     furi_assert(size);
     const char* newline = strstr(ric, "\\n");
     if(newline && newline[2]) ric = newline + 2;
@@ -205,9 +209,28 @@ void pcsg_history_make_label_escaped(
     }
 
     size_t length = 0;
+    char tag[4];
     const char* parts[] = {ric, message};
     for(size_t part = 0; part < COUNT_OF(parts); part++) {
         const char* text = parts[part];
+        /*
+         * With the preview off nothing of the message is shown from its colon
+         * onwards. FLEX writes the page kind in front of it as "ALN: ", which
+         * is worth keeping; three capitals and a colon, so a POCSAG message
+         * opening with a word and a colon is not taken for one, that protocol
+         * putting no tag there at all.
+         */
+        if(part == 1U && !preview) {
+            // Letters first: each test stops at a terminator, so a message of
+            // fewer than four characters never reaches the read of text[3].
+            if(text[0] < 'A' || text[0] > 'Z' || text[1] < 'A' || text[1] > 'Z' ||
+               text[2] < 'A' || text[2] > 'Z' || text[3] != ':') {
+                break;
+            }
+            memcpy(tag, text, 3);
+            tag[3] = '\0';
+            text = tag;
+        }
         while(*text && length + 1U < size) {
             char c = *text++;
             if(c == '\\' && *text) {
@@ -341,16 +364,22 @@ uint8_t pcsg_history_get_type_protocol(PCSGHistory* instance, uint16_t idx) {
     return type;
 }
 
-void pcsg_history_get_text_item_menu(PCSGHistory* instance, FuriString* output, uint16_t idx) {
+void pcsg_history_get_text_item_menu(
+    PCSGHistory* instance,
+    FuriString* output,
+    uint16_t idx,
+    bool preview) {
     furi_assert(instance);
     furi_mutex_acquire(instance->mutex, FuriWaitForever);
     PCSGHistoryLabel* cached = NULL;
-    if(instance->latest_label.valid && instance->latest_label.idx == idx) {
+    if(instance->latest_label.valid && instance->latest_label.idx == idx &&
+       instance->latest_label.preview == preview) {
         cached = &instance->latest_label;
     }
     for(size_t i = 0; i < PCSG_HISTORY_LABEL_CACHE_SIZE; i++) {
         if(cached) break;
-        if(instance->labels[i].valid && instance->labels[i].idx == idx) {
+        if(instance->labels[i].valid && instance->labels[i].idx == idx &&
+           instance->labels[i].preview == preview) {
             cached = &instance->labels[i];
             break;
         }
@@ -365,6 +394,7 @@ void pcsg_history_get_text_item_menu(PCSGHistory* instance, FuriString* output, 
             slot->valid = true;
             slot->idx = idx;
             slot->type = item.type;
+            slot->preview = preview;
             slot->label[0] = '\0';
 
             char buffer[PCSG_HISTORY_PREFIX_SIZE];
@@ -378,7 +408,8 @@ void pcsg_history_get_text_item_menu(PCSGHistory* instance, FuriString* output, 
                     slot->label,
                     sizeof(slot->label),
                     fields[PCSGLogFieldRic],
-                    fields[PCSGLogFieldMessage]);
+                    fields[PCSGLogFieldMessage],
+                    preview);
             }
             cached = slot;
         }
@@ -649,11 +680,16 @@ PCSGHistoryStateAddKey
         slot->valid = true;
         slot->idx = instance->count;
         slot->type = item.type;
+        // Built whole, the setting being the viewer's business rather than
+        // the log's. A list drawn with the preview off misses this one and
+        // rebuilds it from the file, which is one seek per arriving message.
+        slot->preview = true;
         pcsg_history_make_label_escaped(
             slot->label,
             sizeof(slot->label),
             furi_string_get_cstr(instance->ric),
-            furi_string_get_cstr(instance->message));
+            furi_string_get_cstr(instance->message),
+            true);
 
         instance->count++;
         state = PCSGHistoryStateAddKeyNewDada;
