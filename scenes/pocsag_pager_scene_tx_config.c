@@ -18,6 +18,7 @@ typedef enum {
     PCSGTxConfigRic,
     PCSGTxConfigMessage,
     PCSGTxConfigReview,
+    PCSGTxConfigRemote,
 } PCSGTxConfigIndex;
 
 static const uint16_t tx_baud_values[] = {512, 1200, 2400};
@@ -234,6 +235,10 @@ static void pocsag_pager_scene_tx_open_door(VariableItem* item, uint8_t row) {
 
 static void pocsag_pager_scene_tx_set_review(VariableItem* item) {
     pocsag_pager_scene_tx_open_door(item, PCSGTxConfigReview);
+}
+
+static void pocsag_pager_scene_tx_set_remote(VariableItem* item) {
+    pocsag_pager_scene_tx_open_door(item, PCSGTxConfigRemote);
 }
 
 /*
@@ -478,6 +483,11 @@ void pocsag_pager_scene_tx_config_on_enter(void* context) {
         app->variable_item_list, "Review & send", 1, pocsag_pager_scene_tx_set_review, app);
     pocsag_pager_scene_tx_show_door(item);
 
+    // Driven from a PC instead, over a second USB serial port.
+    item = variable_item_list_add(
+        app->variable_item_list, "Serial control", 1, pocsag_pager_scene_tx_set_remote, app);
+    pocsag_pager_scene_tx_show_door(item);
+
     variable_item_list_set_enter_callback(
         app->variable_item_list, pocsag_pager_scene_tx_enter_callback, app);
     variable_item_list_set_selected_item(
@@ -527,6 +537,10 @@ bool pocsag_pager_scene_tx_config_on_event(void* context, SceneManagerEvent even
         if(app->tx_config.message_mode == PagerTxMessageTyped) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxMessageInput);
         }
+        return true;
+    }
+    if(event.event == PCSGTxConfigRemote) {
+        scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneTxRemote);
         return true;
     }
     if(event.event == PCSGTxConfigReview) {

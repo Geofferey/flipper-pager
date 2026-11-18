@@ -19,6 +19,9 @@
 #include "views/pocsag_pager_receiver.h"
 #include "views/pocsag_pager_receiver_info.h"
 #include "views/pocsag_pager_network_info.h"
+// Declared for both builds so the app struct has one shape; only the
+// transmitter compiles the link itself.
+#include "pcsg_serial.h"
 #include "pocsag_pager_history.h"
 #include "flex_sampler.h"
 #include "pocsag_pager_settings.h"
@@ -95,6 +98,8 @@ struct POCSAGPagerApp {
     PCSGAlert classic_alert_mode;
     PCSGAlertTone classic_alert_tone;
 
+    /** The serial control link, alive only while its screen is open. */
+    PCSGSerial* serial;
     PocsagTxEncoder* tx_encoder;
     FlexTxEncoder* flex_tx_encoder;
     PocsagTxConfig tx_config;

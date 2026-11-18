@@ -7,6 +7,7 @@ ADD_SCENE(pocsag_pager, tx_params, TxParams)
 ADD_SCENE(pocsag_pager, tx_ric_input, TxRicInput)
 ADD_SCENE(pocsag_pager, tx_message_input, TxMessageInput)
 ADD_SCENE(pocsag_pager, tx_confirm, TxConfirm)
+ADD_SCENE(pocsag_pager, tx_remote, TxRemote)
 // Typed frequencies and the correction step share this with receiver config.
 ADD_SCENE(pocsag_pager, capcode_input, CapcodeInput)
 #else

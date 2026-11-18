@@ -404,12 +404,6 @@ bool pcsg_filter_accepts(
     const PCSGFilterSettings* filter,
     SubGhzProtocolDecoderBase* decoder_base);
 
-/*
- * Whether a message that got through those filters is one to alert on. True
- * unless its address filter is in an alert mode and the address is outside
- * what that mode names, so the alert modes are the only thing that narrows
- * this. Says nothing about what an alert is: the Alert rows own that.
- */
 /**
  * Whether the message should alert, and through `matched` whether it did so by
  * matching an address the filter names rather than by nothing narrowing it -

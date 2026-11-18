@@ -563,6 +563,61 @@ over a clock still reading `-7` is worse than either answer on its own. Time
 sync takes the same corrected hour the screen shows, so Full sync can never
 write an hour the HUD did not display.
 
+## Serial control
+
+`Serial control` on the transmitter's list opens a line-oriented command link,
+so a program on a PC can drive it: set the channel, say who the network claims
+to be, hand it the time, and send pages.
+
+It takes **USB CDC interface 1** and leaves interface 0 to the console, so the
+Flipper's own CLI and qFlipper keep working while it is open. The host sees a
+second serial port. Any line coding will do; the Flipper ignores baud rate on
+USB. The link is held only while that screen is up, and leaving it puts the USB
+configuration back.
+
+Commands are one per line, ending CR, LF or CRLF. Every one is answered with a
+single `OK` or `ERR <code> <text>`, with any data on `+NAME:` lines before it.
+A line beginning `+` that arrives without being asked for is an event, as on a
+modem - `+READY: flextx 1` is sent when the link comes up.
+
+| | |
+|---|---|
+| `AT` | answers `OK`; use it to find the right port |
+| `AT+VER?` | `+VER: flextx 1` |
+| `AT+STATUS?` | three `+STATUS:` lines: radio, addresses, clock |
+| `AT+FREQ=<hz>` / `AT+FREQ?` | channel |
+| `AT+MODE=<0..3>` | 1600/2, 3200/2, 3200/4, 6400/4 |
+| `AT+PHASE=CAP\|GROUP` | phase from the capcode, or all four |
+| `AT+POL=NORM\|INV` | polarity |
+| `AT+CLOCK=<0..3>` | which clock words: off, time, date, both |
+| `AT+ZONE=<0..31>` `AT+DST=<0\|1>` `AT+EXTSEC=<0..7>` | the system message word |
+| `AT+SSID1=<localid>,<coverage>` `AT+SSID2=<country>` `AT+ROAM=<0\|1>` | identity |
+| `AT+TIME=YYYY-MM-DDThh:mm:ss` | sets the Flipper's clock, which is what the time and date words carry |
+| `AT+CAP=<c0>[,c1,c2,c3]` | up to four capcodes, one per phase; the rest are cleared |
+| `AT+MSG="text"` | set the message and transmit it |
+| `AT+SEND` | transmit the current message again |
+| `AT+ABORT` | stop a transmission |
+
+A quoted argument keeps any commas inside it, and `\` escapes a quote, so a
+message can carry both. Error codes: 1 not an `AT` line, 2 unknown command,
+3 bad argument, 4 capcode out of range, 5 already transmitting, 6 the
+transmitter refused the configuration, 7 line too long.
+
+`AT+TIME` is what makes the PC the network's clock: with it, the transmitted
+time and date come from whatever the host says rather than from the Flipper's
+own RTC, which also makes any date reachable for testing a receiver.
+
+```
+AT+FREQ=929612500
+AT+CAP=1234567
+AT+TIME=2026-11-18T09:30:00
+AT+MSG="CALL THE OFFICE"
+```
+
+This is the first stage: configuration and one-shot sends. A page still goes
+out as its own burst rather than being placed in the frame it belongs to on a
+running grid.
+
 ## References for the FLEX transmitter
 
 The transmitter uses the FLEX word layouts already exercised by the
