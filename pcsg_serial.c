@@ -47,11 +47,14 @@ static void pcsg_serial_write(PCSGSerial* serial, const char* text) {
         furi_hal_cdc_send(PCSG_SERIAL_IF, (uint8_t*)cursor, chunk);
         cursor += chunk;
         remaining -= chunk;
-        // The endpoint takes one packet at a time; without waiting, a reply
-        // longer than a packet overwrites the one still going out.
-        if(remaining) {
-            furi_thread_flags_wait(PCSG_SERIAL_FLAG_TX, FuriFlagWaitAny, 100);
-        }
+        /*
+         * Every packet, including the last: the endpoint carries one at a
+         * time, and a reply is several of these calls in a row - the three
+         * lines of a status, say - so stopping only between the pieces of one
+         * string lets the next call overwrite a packet still going out. That
+         * lost a whole line on the first run against hardware.
+         */
+        furi_thread_flags_wait(PCSG_SERIAL_FLAG_TX, FuriFlagWaitAny, 100);
     }
 }
 
