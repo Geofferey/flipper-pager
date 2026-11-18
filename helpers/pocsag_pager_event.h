@@ -17,6 +17,7 @@ typedef enum {
     PCSGCustomEventSceneSettingHud,
     PCSGCustomEventSceneSettingFilter,
     PCSGCustomEventSceneSettingAlert,
+    PCSGCustomEventSceneSettingDebug,
     PCSGCustomEventSceneCapcodeInputDone,
     PCSGCustomEventTxRicInputDone,
     PCSGCustomEventTxRicInputInvalid,

@@ -143,14 +143,15 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   defaults to Off. This is intended for licensed operators testing their own
   pager infrastructure; the app does not bypass firmware region restrictions.
 - **Settings** is the same configuration, available before receiving: frequency,
-  modulation, `Auto RX`, logging, FLEX time sync and DST, the frequency
-  correction, the debug rows, and three doors into groups of their own.
-  `Filtering` holds everything that decides which messages reach the list -
-  per-kind FLEX page visibility, duplicates, encrypted and partial messages, the
-  capcode, RIC and frame filters with their ranges, and the FLEX phase.
-  `Alerting` holds how a message announces itself and what the radio sounds
-  like - the alert and its tone, the receive and decode LEDs, and the signal
-  sound with its volume, pitch and spread. `HUD options` is the clock and the
+  modulation, `Auto RX`, logging, FLEX time sync and DST, and four doors into
+  groups of their own. `Filtering` holds everything that decides which messages
+  reach the list - per-kind FLEX page visibility, duplicates, encrypted and
+  partial messages, the capcode, RIC and frame filters with their ranges, and
+  the FLEX phase. `Alerting` holds how a message announces itself and what the
+  radio sounds like - the alert and its tone, the receive and decode LEDs, and
+  the signal sound with its volume, pitch and spread. `Debug` holds the rows for
+  working on the app rather than using it - the crystal `Correction`, `Raw
+  Capture`, `Stats Log` and `Weak Decode`. `HUD options` is the clock and the
   Network screen. The receive activity blink can be disabled or set to
   cyan, blue, green, yellow, magenta, red or white, and keeps going for as long
   as the radio is listening, whichever screen is open; the successful-decode

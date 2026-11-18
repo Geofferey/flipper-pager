@@ -14,10 +14,7 @@ enum PCSGSettingIndex {
     PCSGSettingIndexLogging,
     PCSGSettingIndexTimeSync,
     PCSGSettingIndexDst,
-    PCSGSettingIndexFreqCorr,
-    PCSGSettingIndexRawCapture,
-    PCSGSettingIndexStatsLog,
-    PCSGSettingIndexWeakDecode,
+    PCSGSettingIndexDebug,
     PCSGSettingIndexHud,
     PCSGSettingIndexLock,
 };
@@ -115,61 +112,14 @@ static void pocsag_pager_scene_receiver_config_set_preset(VariableItem* item) {
 }
 
 
-#define RAW_CAPTURE_COUNT 2
-const char* const raw_capture_text[RAW_CAPTURE_COUNT] = {
-    "Off",
-    "On",
-};
+// The correction and the three debug switches and their text now live in
+// pocsag_pager_scene_debug_config.c.
 
 #define AUTO_RECEIVE_COUNT 2
 const char* const auto_receive_text[AUTO_RECEIVE_COUNT] = {
     "Disable",
     "Enable",
 };
-// Index 0 is the lowest the arrows reach; the centre index is no correction.
-#define FREQ_CORR_COUNT \
-    ((PCSG_FREQ_CORRECTION_LIST_MAX_HZ * 2) / PCSG_FREQ_CORRECTION_STEP_HZ + 1)
-
-static void pocsag_pager_scene_receiver_config_show_freq_corr(VariableItem* item, int32_t hz) {
-    if(hz == 0) {
-        variable_item_set_current_value_text(item, "Off");
-        return;
-    }
-    char buf[16];
-    const uint32_t magnitude = hz < 0 ? (uint32_t)-hz : (uint32_t)hz;
-    snprintf(
-        buf,
-        sizeof(buf),
-        "%c%lu.%01lu kHz",
-        hz < 0 ? '-' : '+',
-        magnitude / 1000U,
-        (magnitude % 1000U) / 100U);
-    variable_item_set_current_value_text(item, buf);
-}
-
-// A typed value can sit past what the arrows reach, so clamp rather than
-// discard: the row still displays the real value, it just stops stepping.
-static uint8_t pocsag_pager_scene_receiver_config_freq_corr_index(int32_t hz) {
-    if(hz > PCSG_FREQ_CORRECTION_LIST_MAX_HZ) {
-        hz = PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
-    } else if(hz < -PCSG_FREQ_CORRECTION_LIST_MAX_HZ) {
-        hz = -PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
-    }
-    const int32_t offset = hz + PCSG_FREQ_CORRECTION_LIST_MAX_HZ;
-    return (uint8_t)((offset + PCSG_FREQ_CORRECTION_STEP_HZ / 2) / PCSG_FREQ_CORRECTION_STEP_HZ);
-}
-
-static void pocsag_pager_scene_receiver_config_set_freq_corr(VariableItem* item) {
-    POCSAGPagerApp* app = variable_item_get_context(item);
-    const uint8_t index = variable_item_get_current_value_index(item);
-    app->filter.frequency_correction_hz =
-        -PCSG_FREQ_CORRECTION_LIST_MAX_HZ + index * PCSG_FREQ_CORRECTION_STEP_HZ;
-    pocsag_pager_scene_receiver_config_show_freq_corr(
-        item, app->filter.frequency_correction_hz);
-    // The receiver retunes with it, as changing the channel does.
-    app->txrx->rx_restart = true;
-}
-
 /*
  * Every row that is just "pick a value, store it, maybe poke something" is
  * described here instead of getting its own setter and its own four lines in
@@ -220,19 +170,7 @@ static const PCSGConfigRow pcsg_config_rows[] = {
     // Resyncs like the row above: it changes the hour sync would write.
     [PCSGSettingIndexDst] =
         {"DST:", dst_text, PCSG_ROW(filter.dst), PCSGDstCount, PCSGRowEnum, PCSGSideTimeSync},
-    // Debug: record the raw FLEX4 sample stream to SD for offline analysis.
-    [PCSGSettingIndexRawCapture] =
-        {"Raw Capture:", raw_capture_text, PCSG_ROW(filter.raw_capture), RAW_CAPTURE_COUNT,
-         PCSGRowBool, PCSGSideNone},
-    // Debug: periodic counter-only snapshots for untethered reception tests.
-    [PCSGSettingIndexStatsLog] =
-        {"Stats Log:", raw_capture_text, PCSG_ROW(filter.stats_log), RAW_CAPTURE_COUNT,
-         PCSGRowBool, PCSGSideNone},
-    // Soft-decision (Chase) recovery of weak FLEX4 words. Off by default: it
-    // allocates its reliability buffer in the decoder only while enabled.
-    [PCSGSettingIndexWeakDecode] =
-        {"Weak Decode:", raw_capture_text, PCSG_ROW(filter.weak_decode), RAW_CAPTURE_COUNT,
-         PCSGRowBool, PCSGSideNone},
+    [PCSGSettingIndexDebug] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
     // Lock has no value to pick, and fixes the table's length to the list's.
     [PCSGSettingIndexLock] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
 };
@@ -279,6 +217,12 @@ static void pocsag_pager_scene_receiver_config_alerting_changed(VariableItem* it
     view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingAlert);
 }
 
+static void pocsag_pager_scene_receiver_config_debug_changed(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    variable_item_set_current_value_index(item, 0);
+    view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingDebug);
+}
+
 static void pcsg_config_row_add(POCSAGPagerApp* app, uint8_t index) {
     const PCSGConfigRow* row = &pcsg_config_rows[index];
     VariableItem* item = variable_item_list_add(
@@ -300,12 +244,11 @@ static void
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingFilter);
     } else if(index == PCSGSettingIndexAlerting) {
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingAlert);
+    } else if(index == PCSGSettingIndexDebug) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingDebug);
     } else if(index == PCSGSettingIndexFrequency) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, PCSGCustomEventSceneSettingFrequency);
-    } else if(index == PCSGSettingIndexFreqCorr) {
-        view_dispatcher_send_custom_event(
-            app->view_dispatcher, PCSGCustomEventSceneSettingFreqCorr);
     }
 }
 
@@ -364,21 +307,16 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     pcsg_config_row_add(app, PCSGSettingIndexTimeSync);
     pcsg_config_row_add(app, PCSGSettingIndexDst);
 
+    // For working on the app rather than using it: the crystal correction, the
+    // two SD captures and the soft-decision decoder.
     item = variable_item_list_add(
         app->variable_item_list,
-        "Correction:",
-        FREQ_CORR_COUNT,
-        pocsag_pager_scene_receiver_config_set_freq_corr,
+        "Debug",
+        2,
+        pocsag_pager_scene_receiver_config_debug_changed,
         app);
-    variable_item_set_current_value_index(
-        item,
-        pocsag_pager_scene_receiver_config_freq_corr_index(app->filter.frequency_correction_hz));
-    // Show what is stored, not the index: a typed value need not be on the grid.
-    pocsag_pager_scene_receiver_config_show_freq_corr(item, app->filter.frequency_correction_hz);
-
-    pcsg_config_row_add(app, PCSGSettingIndexRawCapture);
-    pcsg_config_row_add(app, PCSGSettingIndexStatsLog);
-    pcsg_config_row_add(app, PCSGSettingIndexWeakDecode);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, "");
 
     /*
      * A door, as the transmitter's FLEX params row is: two values so the list
@@ -426,10 +364,8 @@ bool pocsag_pager_scene_receiver_config_on_event(void* context, SceneManagerEven
         } else if(event.event == PCSGCustomEventSceneSettingAlert) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneAlertConfig);
             consumed = true;
-        } else if(event.event == PCSGCustomEventSceneSettingFreqCorr) {
-            scene_manager_set_scene_state(
-                app->scene_manager, POCSAGPagerSceneCapcodeInput, PCSGNumberFieldFreqCorrection);
-            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneCapcodeInput);
+        } else if(event.event == PCSGCustomEventSceneSettingDebug) {
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneDebugConfig);
             consumed = true;
         } else if(event.event == PCSGCustomEventSceneSettingFrequency) {
             scene_manager_set_scene_state(
