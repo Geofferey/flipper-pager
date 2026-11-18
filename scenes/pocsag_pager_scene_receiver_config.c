@@ -11,9 +11,9 @@ enum PCSGSettingIndex {
     PCSGSettingIndexAutoReceive,
     PCSGSettingIndexFilter,
     PCSGSettingIndexAlerting,
+    PCSGSettingIndexHud,
     PCSGSettingIndexLogging,
     PCSGSettingIndexDebug,
-    PCSGSettingIndexHud,
     PCSGSettingIndexLock,
 };
 
@@ -276,6 +276,21 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, 0);
     variable_item_set_current_value_text(item, "");
 
+    /*
+     * The clock and the Network screen. A door, as the transmitter's FLEX
+     * params row is: two values so the list draws its own arrow at the right
+     * edge rather than a ">" written as value text landing mid column, and
+     * right opens it as OK does.
+     */
+    item = variable_item_list_add(
+        app->variable_item_list,
+        "HUD options",
+        2,
+        pocsag_pager_scene_receiver_config_hud_changed,
+        app);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, "");
+
     pcsg_config_row_add(app, PCSGSettingIndexLogging);
 
     // For working on the app rather than using it: the crystal correction, the
@@ -285,20 +300,6 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
         "Debug",
         2,
         pocsag_pager_scene_receiver_config_debug_changed,
-        app);
-    variable_item_set_current_value_index(item, 0);
-    variable_item_set_current_value_text(item, "");
-
-    /*
-     * A door, as the transmitter's FLEX params row is: two values so the list
-     * draws its own arrow at the right edge rather than a ">" written as value
-     * text landing mid column, and right opens it as OK does.
-     */
-    item = variable_item_list_add(
-        app->variable_item_list,
-        "HUD options",
-        2,
-        pocsag_pager_scene_receiver_config_hud_changed,
         app);
     variable_item_set_current_value_index(item, 0);
     variable_item_set_current_value_text(item, "");
