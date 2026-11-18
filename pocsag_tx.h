@@ -11,6 +11,8 @@
  * batches its encoder emits, so it carries its own lower ceiling.
  */
 #define PCSG_TX_MAX_MESSAGE_LENGTH        240U
+/** What one phase carries in a single frame: the message split three ways. */
+#define PCSG_TX_PAGE_CHARS                (PCSG_TX_MAX_MESSAGE_LENGTH / 3U)
 #define PCSG_TX_POCSAG_MAX_MESSAGE_LENGTH 80U
 #define PCSG_TX_RIC_MAX                   0x1FFFFFU
 
@@ -158,6 +160,18 @@ typedef struct {
     /** Sequence mode: the number this page carries. Not saved. */
     uint16_t sequence_number;
     char message[PCSG_TX_MAX_MESSAGE_LENGTH + 1U];
+    /*
+     * Per-phase pages. Ordinarily every phase a mode carries sends `message`
+     * to its own capcode in ric[], which is one message to several addresses.
+     * With this set, phase n sends page_text[n] instead, so one burst carries
+     * a different message to each address - which is what a network's phases
+     * are for.
+     *
+     * One frame, so each page is whatever fits a single fragment; a message
+     * long enough to split would need its phases to run to different lengths.
+     */
+    bool per_phase_text;
+    char page_text[4][PCSG_TX_PAGE_CHARS + 1U];
 } PocsagTxConfig;
 
 typedef struct PocsagTxEncoder PocsagTxEncoder;

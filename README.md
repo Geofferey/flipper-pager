@@ -594,6 +594,8 @@ modem - `+READY: flextx 1` is sent when the link comes up.
 | `AT+SSID1=<localid>,<coverage>` `AT+SSID2=<country>` `AT+ROAM=<0\|1>` | identity |
 | `AT+TIME=YYYY-MM-DDThh:mm:ss` | sets the Flipper's clock, which is what the time and date words carry |
 | `AT+CAP=<c0>[,c1,c2,c3]` | up to four capcodes, one per phase; the rest are cleared |
+| `AT+PAGE=<slot>,<cap>,"text"` | stage one phase's own address and message |
+| `AT+PAGECLR` | drop the staged pages and go back to one message for all |
 | `AT+MSG="text"` | set the message and transmit it |
 | `AT+SEND` | transmit the current message again |
 | `AT+ABORT` | stop a transmission |
@@ -611,6 +613,28 @@ configuration, 7 line too long.
 `AT+TIME` is what makes the PC the network's clock: with it, the transmitted
 time and date come from whatever the host says rather than from the Flipper's
 own RTC, which also makes any date reachable for testing a receiver.
+
+`AT+CAP` and `AT+MSG` send **one message to several addresses** - the same text
+on every phase the mode carries. `AT+PAGE` is the other way round: it stages a
+phase's own address and its own text, so one burst carries a different message
+to each address, which is what a network's phases are for. Stage the phases,
+then `AT+SEND`:
+
+```
+AT+MODE=3                            four phases
+AT+PHASE=GROUP                       slot n rides phase n
+AT+PAGE=0,1234568,"UNIT 1 RESPOND"
+AT+PAGE=1,2345681,"UNIT 2 STANDBY"
+AT+PAGE=2,3456794,"UNIT 3 RTB"
+AT+PAGE=3,4567900,"UNIT 4 ACK"
+AT+SEND
+```
+
+A staged page is one frame, so each is limited to 80 characters - a longer one
+would need its phases to run to different numbers of frames. A page staged with
+an empty message is a tone-only page, so one address can be beeped while
+another beside it is sent text. `AT+STATUS?` lists what is staged on `+PAGE:`
+lines, and `AT+MSG` clears the staging and goes back to one message for all.
 
 ```
 AT+FREQ=929612500

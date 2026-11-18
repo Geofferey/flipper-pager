@@ -777,10 +777,16 @@ static bool flex_tx_write_frame(
     }
 
     const bool idle = spec->idle;
-    const bool tone_only = !idle && spec->length == 0U;
+    /*
+     * Encoded per phase rather than once for all of them: with per-phase
+     * pages each carries its own text, and a tone-only page is then a
+     * property of the phase too - one address can be sent a message while
+     * another beside it is only beeped.
+     */
     uint32_t message_words[32];
     uint8_t message_word_count = 0;
-    if(!idle && !tone_only) {
+    bool tone_only = !idle && spec->length == 0U;
+    if(!idle && !tone_only && !config->per_phase_text) {
         message_word_count = flex_tx_encode_alpha(
             spec->text,
             spec->length,
@@ -815,6 +821,27 @@ static bool flex_tx_write_frame(
     for(uint8_t p = 0; p < mode.phases; p++) {
         const uint8_t index = mode.order[p];
         const uint32_t capcode = config->ric[index];
+
+        if(config->per_phase_text && !idle) {
+            const char* text = config->page_text[index];
+            const uint8_t length = (uint8_t)strnlen(text, PCSG_TX_PAGE_CHARS);
+            tone_only = length == 0U;
+            message_word_count = 0;
+            if(!tone_only) {
+                message_word_count = flex_tx_encode_alpha(
+                    text,
+                    length,
+                    spec->fragment,
+                    spec->continuation,
+                    flex_tx_signature(text, length),
+                    spec->message_number,
+                    retrieval,
+                    message_words,
+                    COUNT_OF(message_words));
+                // Longer than one frame's phase will hold.
+                if(message_word_count == 0U) return false;
+            }
+        }
         // Every phase on the air gets its own block information word and the
         // clock, so a pager listening on any of them finds a valid frame.
         const bool carries = !idle && flex_tx_capcode_valid(capcode);
@@ -946,6 +973,10 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
                           (slot == FLEX_TX_SEQ_FRAME - 1U || slot == FLEX_TX_SEQ_FRAME);
         frames = page ? 3U : 1U;
         page_frame = page ? 1U : frames;
+    } else if(config->per_phase_text) {
+        // Each phase carries its own page, so there is no one length to split
+        // on: they would have to run to different numbers of frames.
+        frames = 1U;
     } else {
         // A tone-only page is one frame with nothing to split.
         frames = (message_length == 0U) ?

@@ -224,6 +224,19 @@ static void pcsg_serial_status(PCSGSerial* serial) {
         config->utc_code,
         config->dst ? 1U : 0U,
         config->ext_sec);
+    if(config->per_phase_text) {
+        static const char phase[4] = {'A', 'B', 'C', 'D'};
+        for(size_t i = 0; i < 4U; i++) {
+            if(!config->ric[i] && !config->page_text[i][0]) continue;
+            pcsg_serial_printf(
+                serial,
+                "+PAGE: %u %c %lu \"%s\"\r\n",
+                (unsigned)i,
+                phase[i],
+                (unsigned long)config->ric[i],
+                config->page_text[i]);
+        }
+    }
     pcsg_serial_printf(
         serial,
         "+STATUS: cap=%lu,%lu,%lu,%lu ssid1=%u/%u ssid2=%u roam=%u\r\n",
@@ -307,6 +320,15 @@ static void pcsg_serial_execute(PCSGSerial* serial, char* line) {
     }
     if(pcsg_serial_is(rest, "ABORT")) {
         pcsg_tx_stop(app);
+        pcsg_serial_ok(serial);
+        return;
+    }
+    if(pcsg_serial_is(rest, "PAGECLR")) {
+        config->per_phase_text = false;
+        for(size_t i = 0; i < 4U; i++) {
+            config->page_text[i][0] = '\0';
+            config->ric[i] = 0;
+        }
         pcsg_serial_ok(serial);
         return;
     }
@@ -424,7 +446,42 @@ static void pcsg_serial_execute(PCSGSerial* serial, char* line) {
             next = pcsg_serial_arg(next, &text);
         }
         for(size_t i = 0; i < 4U; i++) config->ric[i] = caps[i];
+    } else if(pcsg_serial_is(rest, "PAGE")) {
+        /*
+         * One phase's own address and message: PAGE=<slot>,<cap>,"text".
+         * Staged rather than sent, so a burst can be built up a phase at a
+         * time and then put on the air by SEND in one go.
+         */
+        uint32_t slot = 0;
+        uint32_t cap = 0;
+        char* second = NULL;
+        char* third = NULL;
+        next = pcsg_serial_arg(next, &second);
+        pcsg_serial_arg(next, &third);
+        if(!pcsg_serial_number(first, &slot, 3U)) {
+            pcsg_serial_err(serial, 3, "page <slot 0..3>,<cap>,\"text\"");
+            return;
+        }
+        if(!pcsg_serial_number(second, &cap, 0xFFFFFFFFU) || !flex_tx_capcode_valid(cap)) {
+            pcsg_serial_err(serial, 4, "capcode out of range");
+            return;
+        }
+        if(!third) {
+            pcsg_serial_err(serial, 3, "page needs a quoted message");
+            return;
+        }
+        if(strlen(third) > PCSG_TX_PAGE_CHARS) {
+            pcsg_serial_printf(
+                serial, "ERR 3 page over %u chars\r\n", (unsigned)PCSG_TX_PAGE_CHARS);
+            return;
+        }
+        config->ric[slot] = cap;
+        strlcpy(config->page_text[slot], third, sizeof(config->page_text[slot]));
+        config->per_phase_text = true;
     } else if(pcsg_serial_is(rest, "MSG")) {
+        // The plain message again, so MSG after PAGE goes back to one text
+        // for every phase rather than quietly keeping the staged ones.
+        config->per_phase_text = false;
         if(!first) {
             pcsg_serial_err(serial, 3, "msg \"text\"");
             return;
