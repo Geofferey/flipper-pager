@@ -9,18 +9,11 @@ enum PCSGSettingIndex {
     PCSGSettingIndexFrequency,
     PCSGSettingIndexModulation,
     PCSGSettingIndexFilter,
+    PCSGSettingIndexAlerting,
     PCSGSettingIndexLogging,
     PCSGSettingIndexAutoReceive,
-    PCSGSettingIndexAlert,
-    PCSGSettingIndexAlertTone,
-    PCSGSettingIndexReceiveLed,
-    PCSGSettingIndexDecodeLed,
     PCSGSettingIndexTimeSync,
     PCSGSettingIndexDst,
-    PCSGSettingIndexSignalSound,
-    PCSGSettingIndexToneVolume,
-    PCSGSettingIndexTonePitch,
-    PCSGSettingIndexToneSpread,
     PCSGSettingIndexFreqCorr,
     PCSGSettingIndexRawCapture,
     PCSGSettingIndexStatsLog,
@@ -38,18 +31,6 @@ const char* const logging_text[LOGGING_COUNT] = {
     "Temp",
 };
 
-const char* const alert_text[PCSGAlertCount] = {
-    "Both",
-    "Sound",
-    "Vibro",
-    "Off",
-};
-
-const char* const alert_tone_text[PCSGAlertToneCount] = {
-    "Default",
-    "Classic",
-};
-
 const char* const time_sync_text[PCSGTimeSyncCount] = {
     "Off",
     "MM:SS",
@@ -64,49 +45,8 @@ const char* const dst_text[PCSGDstCount] = {
     "Disabled",
 };
 
-#define LED_SELECTION_COUNT (PCSGLedColorCount + 1U)
-const char* const led_color_text[LED_SELECTION_COUNT] = {
-    "Off",
-    "Cyan",
-    "Blue",
-    "Green",
-    "Yellow",
-    "Magenta",
-    "Red",
-    "White",
-    "Amber",
-    "Lime",
-    "Teal",
-    "Sky",
-    "Violet",
-    "Pink",
-    "Warm",
-};
-
-const char* const signal_sound_text[PCSGSoundCount] = {
-    "Off",
-    "Raw",
-    "Tone",
-    "Synth",
-};
-
-const char* const tone_volume_text[PCSGToneVolumeCount] = {
-    "Low",
-    "Medium",
-    "High",
-};
-
-const char* const tone_pitch_text[PCSGTonePitchCount] = {
-    "Low",
-    "Medium",
-    "High",
-};
-
-const char* const tone_spread_text[PCSGToneSpreadCount] = {
-    "Narrow",
-    "Normal",
-    "Wide",
-};
+// The alert, LED and signal-tone rows and their text now live in
+// pocsag_pager_scene_alert_config.c.
 
 uint8_t pocsag_pager_scene_receiver_config_next_frequency(const uint32_t value, void* context) {
     furi_assert(context);
@@ -241,23 +181,17 @@ typedef enum {
     PCSGRowNone, // a row this table does not describe
     PCSGRowEnum, // field = index
     PCSGRowBool, // field = index != 0
-    PCSGRowBoolInv, // the file shows "Show", the field holds "hidden"
-    PCSGRowLed, // off, or one colour per index past it
 } PCSGRowKind;
 
 typedef enum {
     PCSGSideNone,
-    PCSGSideAlert,
     PCSGSideTimeSync,
-    PCSGSideRxRestart,
 } PCSGRowSide;
 
 typedef struct {
     const char* label;
     const char* const* text;
     uint16_t offset;
-    // PCSGRowLed only: the colour field that index 1 and up select.
-    uint16_t extra;
     uint8_t count;
     uint8_t kind;
     uint8_t side;
@@ -267,74 +201,44 @@ typedef struct {
 
 // Every field below is one byte, which is what lets them share one accessor.
 _Static_assert(sizeof(bool) == 1, "row fields are byte-wide");
-_Static_assert(sizeof(PCSGAlert) == 1, "build is missing -fshort-enums");
 
 static const PCSGConfigRow pcsg_config_rows[] = {
-    // A door, as HUD options is. Two values so the list draws its own arrow.
-    [PCSGSettingIndexFilter] = {NULL, NULL, 0, 0, 0, PCSGRowNone, PCSGSideNone},
+    // Doors, as HUD options is. Two values so the list draws its own arrow.
+    [PCSGSettingIndexFilter] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
+    [PCSGSettingIndexAlerting] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
     // Applies from the next receive session.
     [PCSGSettingIndexLogging] =
-        {"Logging:", logging_text, PCSG_ROW(filter.log_temp), 0, LOGGING_COUNT, PCSGRowBool,
+        {"Logging:", logging_text, PCSG_ROW(filter.log_temp), LOGGING_COUNT, PCSGRowBool,
          PCSGSideNone},
     // Receiving begins as the app opens, the menu going by unseen.
     [PCSGSettingIndexAutoReceive] =
-        {"Auto receive:", auto_receive_text, PCSG_ROW(filter.auto_receive), 0,
-         AUTO_RECEIVE_COUNT, PCSGRowBool, PCSGSideNone},
-    [PCSGSettingIndexAlert] =
-        {"Alert:", alert_text, PCSG_ROW(filter.alert), 0, PCSGAlertCount, PCSGRowEnum,
-         PCSGSideAlert},
-    [PCSGSettingIndexAlertTone] =
-        {"Alert Tone:", alert_tone_text, PCSG_ROW(filter.alert_tone), 0, PCSGAlertToneCount,
-         PCSGRowEnum, PCSGSideAlert},
-    [PCSGSettingIndexReceiveLed] =
-        {"Receive LED:", led_color_text, PCSG_ROW(filter.receive_led),
-         PCSG_ROW(filter.receive_led_color), LED_SELECTION_COUNT, PCSGRowLed, PCSGSideNone},
-    [PCSGSettingIndexDecodeLed] =
-        {"Decode LED:", led_color_text, PCSG_ROW(filter.decode_led),
-         PCSG_ROW(filter.decode_led_color), LED_SELECTION_COUNT, PCSGRowLed, PCSGSideNone},
+        {"Auto receive:", auto_receive_text, PCSG_ROW(filter.auto_receive), AUTO_RECEIVE_COUNT,
+         PCSGRowBool, PCSGSideNone},
     [PCSGSettingIndexTimeSync] =
-        {"Time sync:", time_sync_text, PCSG_ROW(filter.time_sync), 0, PCSGTimeSyncCount,
+        {"Time sync:", time_sync_text, PCSG_ROW(filter.time_sync), PCSGTimeSyncCount,
          PCSGRowEnum, PCSGSideTimeSync},
     // Resyncs like the row above: it changes the hour sync would write.
     [PCSGSettingIndexDst] =
-        {"DST:", dst_text, PCSG_ROW(filter.dst), 0, PCSGDstCount, PCSGRowEnum, PCSGSideTimeSync},
-    // The speaker is set up when receiving starts, so these restart the radio.
-    [PCSGSettingIndexSignalSound] =
-        {"Signal Sound:", signal_sound_text, PCSG_ROW(filter.signal_sound), 0, PCSGSoundCount,
-         PCSGRowEnum, PCSGSideRxRestart},
-    [PCSGSettingIndexToneVolume] =
-        {"Signal Vol:", tone_volume_text, PCSG_ROW(filter.tone_volume), 0, PCSGToneVolumeCount,
-         PCSGRowEnum, PCSGSideRxRestart},
-    [PCSGSettingIndexTonePitch] =
-        {"Signal Pitch:", tone_pitch_text, PCSG_ROW(filter.tone_pitch), 0, PCSGTonePitchCount,
-         PCSGRowEnum, PCSGSideRxRestart},
-    [PCSGSettingIndexToneSpread] =
-        {"Signal Spread:", tone_spread_text, PCSG_ROW(filter.tone_spread), 0,
-         PCSGToneSpreadCount, PCSGRowEnum, PCSGSideRxRestart},
+        {"DST:", dst_text, PCSG_ROW(filter.dst), PCSGDstCount, PCSGRowEnum, PCSGSideTimeSync},
     // Debug: record the raw FLEX4 sample stream to SD for offline analysis.
     [PCSGSettingIndexRawCapture] =
-        {"Raw Capture:", raw_capture_text, PCSG_ROW(filter.raw_capture), 0, RAW_CAPTURE_COUNT,
+        {"Raw Capture:", raw_capture_text, PCSG_ROW(filter.raw_capture), RAW_CAPTURE_COUNT,
          PCSGRowBool, PCSGSideNone},
     // Debug: periodic counter-only snapshots for untethered reception tests.
     [PCSGSettingIndexStatsLog] =
-        {"Stats Log:", raw_capture_text, PCSG_ROW(filter.stats_log), 0, RAW_CAPTURE_COUNT,
+        {"Stats Log:", raw_capture_text, PCSG_ROW(filter.stats_log), RAW_CAPTURE_COUNT,
          PCSGRowBool, PCSGSideNone},
     // Soft-decision (Chase) recovery of weak FLEX4 words. Off by default: it
     // allocates its reliability buffer in the decoder only while enabled.
     [PCSGSettingIndexWeakDecode] =
-        {"Weak Decode:", raw_capture_text, PCSG_ROW(filter.weak_decode), 0, RAW_CAPTURE_COUNT,
+        {"Weak Decode:", raw_capture_text, PCSG_ROW(filter.weak_decode), RAW_CAPTURE_COUNT,
          PCSGRowBool, PCSGSideNone},
     // Lock has no value to pick, and fixes the table's length to the list's.
-    [PCSGSettingIndexLock] = {NULL, NULL, 0, 0, 0, PCSGRowNone, PCSGSideNone},
+    [PCSGSettingIndexLock] = {NULL, NULL, 0, 0, PCSGRowNone, PCSGSideNone},
 };
 
 static uint8_t pcsg_config_row_value(const POCSAGPagerApp* app, const PCSGConfigRow* row) {
-    const uint8_t stored = *((const uint8_t*)app + row->offset);
-    if(row->kind == PCSGRowBoolInv) return stored ? 0U : 1U;
-    if(row->kind == PCSGRowLed) {
-        return stored ? (uint8_t)(*((const uint8_t*)app + row->extra) + 1U) : 0U;
-    }
-    return stored;
+    return *((const uint8_t*)app + row->offset);
 }
 
 // The row being changed is always the selected one, which is how this finds
@@ -350,35 +254,10 @@ static void pcsg_config_row_changed(VariableItem* item) {
     variable_item_set_current_value_text(item, row->text[value]);
 
     uint8_t* field = (uint8_t*)app + row->offset;
-    switch(row->kind) {
-    case PCSGRowEnum:
-        *field = value;
-        break;
-    case PCSGRowBoolInv:
-        *field = value == 0U;
-        break;
-    case PCSGRowLed:
-        *field = value != 0U;
-        if(value) *((uint8_t*)app + row->extra) = value - 1U;
-        break;
-    default:
-        *field = value != 0U;
-        break;
-    }
+    *field = row->kind == PCSGRowEnum ? value : (value != 0U);
 
-    switch(row->side) {
-    case PCSGSideAlert:
-        pcsg_classic_alert_reset(app);
-        break;
-    case PCSGSideTimeSync:
-        app->time_sync_sequence = 0;
-        break;
-    case PCSGSideRxRestart:
-        app->txrx->rx_restart = true;
-        break;
-    default:
-        break;
-    }
+    // Changing either clock row makes the pending sync stale.
+    if(row->side == PCSGSideTimeSync) app->time_sync_sequence = 0;
 }
 
 static void pocsag_pager_scene_receiver_config_hud_changed(VariableItem* item) {
@@ -392,6 +271,12 @@ static void pocsag_pager_scene_receiver_config_filter_changed(VariableItem* item
     POCSAGPagerApp* app = variable_item_get_context(item);
     variable_item_set_current_value_index(item, 0);
     view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingFilter);
+}
+
+static void pocsag_pager_scene_receiver_config_alerting_changed(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    variable_item_set_current_value_index(item, 0);
+    view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingAlert);
 }
 
 static void pcsg_config_row_add(POCSAGPagerApp* app, uint8_t index) {
@@ -413,6 +298,8 @@ static void
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingHud);
     } else if(index == PCSGSettingIndexFilter) {
         view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingFilter);
+    } else if(index == PCSGSettingIndexAlerting) {
+        view_dispatcher_send_custom_event(app->view_dispatcher, PCSGCustomEventSceneSettingAlert);
     } else if(index == PCSGSettingIndexFrequency) {
         view_dispatcher_send_custom_event(
             app->view_dispatcher, PCSGCustomEventSceneSettingFrequency);
@@ -461,18 +348,20 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_index(item, 0);
     variable_item_set_current_value_text(item, "");
 
+    // How a message announces itself, and what the radio sounds like.
+    item = variable_item_list_add(
+        app->variable_item_list,
+        "Alerting",
+        2,
+        pocsag_pager_scene_receiver_config_alerting_changed,
+        app);
+    variable_item_set_current_value_index(item, 0);
+    variable_item_set_current_value_text(item, "");
+
     pcsg_config_row_add(app, PCSGSettingIndexLogging);
     pcsg_config_row_add(app, PCSGSettingIndexAutoReceive);
-    pcsg_config_row_add(app, PCSGSettingIndexAlert);
-    pcsg_config_row_add(app, PCSGSettingIndexAlertTone);
-    pcsg_config_row_add(app, PCSGSettingIndexReceiveLed);
-    pcsg_config_row_add(app, PCSGSettingIndexDecodeLed);
     pcsg_config_row_add(app, PCSGSettingIndexTimeSync);
     pcsg_config_row_add(app, PCSGSettingIndexDst);
-    pcsg_config_row_add(app, PCSGSettingIndexSignalSound);
-    pcsg_config_row_add(app, PCSGSettingIndexToneVolume);
-    pcsg_config_row_add(app, PCSGSettingIndexTonePitch);
-    pcsg_config_row_add(app, PCSGSettingIndexToneSpread);
 
     item = variable_item_list_add(
         app->variable_item_list,
@@ -532,6 +421,9 @@ bool pocsag_pager_scene_receiver_config_on_event(void* context, SceneManagerEven
             consumed = true;
         } else if(event.event == PCSGCustomEventSceneSettingFilter) {
             scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneFilterConfig);
+            consumed = true;
+        } else if(event.event == PCSGCustomEventSceneSettingAlert) {
+            scene_manager_next_scene(app->scene_manager, POCSAGPagerSceneAlertConfig);
             consumed = true;
         } else if(event.event == PCSGCustomEventSceneSettingFreqCorr) {
             scene_manager_set_scene_state(

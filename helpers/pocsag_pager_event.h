@@ -16,6 +16,7 @@ typedef enum {
     /** Settings rows that open a scene of their own. */
     PCSGCustomEventSceneSettingHud,
     PCSGCustomEventSceneSettingFilter,
+    PCSGCustomEventSceneSettingAlert,
     PCSGCustomEventSceneCapcodeInputDone,
     PCSGCustomEventTxRicInputDone,
     PCSGCustomEventTxRicInputInvalid,

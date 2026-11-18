@@ -142,14 +142,16 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   correction offsets the carrier from -15.0 to +15.0 kHz in 0.5 kHz steps and
   defaults to Off. This is intended for licensed operators testing their own
   pager infrastructure; the app does not bypass firmware region restrictions.
-- **Settings** is the same configuration, available before receiving:
-  frequency, modulation, logging, FLEX time sync, receive/decode LED indicators
-  and the `Filtering` and `HUD options` doors. `Filtering` holds everything that
-  decides which messages reach the list - per-kind FLEX page visibility,
-  duplicates, encrypted and partial messages, the capcode, RIC and frame
-  filters with their ranges, and the FLEX phase - which had grown to seventeen
-  rows scattered through the main list. The receive activity blink can be
-  disabled or set to
+- **Settings** is the same configuration, available before receiving: frequency,
+  modulation, logging, auto receive, FLEX time sync and DST, the frequency
+  correction, the debug rows, and three doors into groups of their own.
+  `Filtering` holds everything that decides which messages reach the list -
+  per-kind FLEX page visibility, duplicates, encrypted and partial messages, the
+  capcode, RIC and frame filters with their ranges, and the FLEX phase.
+  `Alerting` holds how a message announces itself and what the radio sounds
+  like - the alert and its tone, the receive and decode LEDs, and the signal
+  sound with its volume, pitch and spread. `HUD options` is the clock and the
+  Network screen. The receive activity blink can be disabled or set to
   cyan, blue, green, yellow, magenta, red or white, and keeps going for as long
   as the radio is listening, whichever screen is open; the successful-decode
   green blink can be disabled independently. Settings are saved to
