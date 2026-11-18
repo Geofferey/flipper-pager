@@ -54,23 +54,37 @@ static bool pcsg_filter_alert_match(
 
 bool pcsg_filter_alerts(
     const PCSGFilterSettings* filter,
-    SubGhzProtocolDecoderBase* decoder_base) {
+    SubGhzProtocolDecoderBase* decoder_base,
+    bool* matched) {
     furi_assert(filter);
     furi_assert(decoder_base);
+    if(matched) *matched = false;
 
+    PCSGCapcodeFilter mode;
+    uint32_t first;
+    uint32_t second;
+    uint32_t value;
     if(decoder_base->protocol == &subghz_protocol_pocsag) {
-        return pcsg_filter_alert_match(
-            filter->ric_filter,
-            filter->ric_min,
-            filter->ric_max,
-            subghz_protocol_decoder_pocsag_get_ric(decoder_base));
+        mode = filter->ric_filter;
+        first = filter->ric_min;
+        second = filter->ric_max;
+        value = subghz_protocol_decoder_pocsag_get_ric(decoder_base);
+    } else if(decoder_base->protocol == &subghz_protocol_flex) {
+        FlexPageInfo page;
+        subghz_protocol_decoder_flex_get_page_info(decoder_base, &page);
+        mode = filter->capcode_filter;
+        first = filter->capcode_min;
+        second = filter->capcode_max;
+        value = page.capcode;
+    } else {
+        return true;
     }
-    if(decoder_base->protocol != &subghz_protocol_flex) return true;
 
-    FlexPageInfo page;
-    subghz_protocol_decoder_flex_get_page_info(decoder_base, &page);
-    return pcsg_filter_alert_match(
-        filter->capcode_filter, filter->capcode_min, filter->capcode_max, page.capcode);
+    const bool alerts = pcsg_filter_alert_match(mode, first, second, value);
+    // Only an alert mode names addresses; the rest let everything through, so
+    // reaching here by one of those is not a match with anything.
+    if(matched) *matched = alerts && pcsg_filter_is_alert(mode);
+    return alerts;
 }
 
 bool pcsg_filter_accepts(
@@ -199,6 +213,8 @@ static const PCSGSetting pcsg_settings[] = {
     {"TimeSync", PCSGTimeSyncCount - 1, PCSG_FIELD(filter.time_sync), PCSGSetU32},
     {"DecodeLedColor", PCSGLedColorCount - 1, PCSG_FIELD(filter.decode_led_color), PCSGSetU32},
     {"AlertTone", PCSGAlertToneCount - 1, PCSG_FIELD(filter.alert_tone), PCSGSetU32},
+    {"FilterAlert", PCSGAlertCount - 1, PCSG_FIELD(filter.filter_alert), PCSGSetU32},
+    {"FilterAlertTone", PCSGAlertToneCount - 1, PCSG_FIELD(filter.filter_alert_tone), PCSGSetU32},
     // The retired FlexTypes key is simply no longer read: the forward scan
     // steps over a line nobody asks for. These three replace it, and have to
     // go last because a key the file lacks ends every read after it.

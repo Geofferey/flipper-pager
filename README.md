@@ -147,7 +147,13 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   `Filtering` holds everything that decides which messages
   reach the list, and how much of one it shows - `Preview`, per-kind FLEX page
   visibility, duplicates, encrypted and partial messages, the capcode, RIC and
-  frame filters with their ranges, and the FLEX phase. `Preview` takes `Hide`, `Show` or
+  frame filters with their ranges, the FLEX phase, and `Filter Alert` and
+  `Filter Tone`. Those last two mirror the Alerting rows and are used instead
+  of them for a message that alerted by **matching an address the capcode or
+  RIC filter names** - an `Alert` or `AlertRng` mode. Everything else keeps the
+  Alerting pair, including every message when no filter is in an alert mode at
+  all, so a watched address can announce itself differently from the rest.
+  `Preview` takes `Hide`, `Show` or
   `Scroll`. `Hide` leaves each row its header and drops the message text from
   the colon onwards, so a FLEX row reads `123456 ALN` and a POCSAG one stops
   after its function; the message is still there, one OK away. `Show` fills the

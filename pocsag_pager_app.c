@@ -291,6 +291,10 @@ static POCSAGPagerApp* pocsag_pager_app_alloc() {
     pcsg_preset_init(app, "POCSAG", 439987500, NULL, 0);
 
     // Every FLEX page kind is shown until the user hides one.
+    // The same pair the Alerting rows start on, so a watched address sounds
+    // like everything else until it is told to sound otherwise.
+    app->filter.filter_alert = PCSGAlertBoth;
+    app->filter.filter_alert_tone = PCSGAlertToneDefault;
     app->filter.show_alpha = true;
     app->filter.preview = PCSGPreviewShow;
     app->filter.show_numeric = true;

@@ -303,6 +303,12 @@ typedef struct {
     bool log_temp;
     PCSGAlert alert;
     PCSGAlertTone alert_tone;
+    /** The pair used instead when the message alerted by matching an address
+     *  the capcode or RIC filter names, rather than by nothing narrowing it.
+     *  Watched addresses are the point of those modes, so they are worth
+     *  announcing differently from everything else. */
+    PCSGAlert filter_alert;
+    PCSGAlertTone filter_alert_tone;
     bool receive_led;
     PCSGLedColor receive_led_color;
     bool decode_led;
@@ -404,6 +410,12 @@ bool pcsg_filter_accepts(
  * what that mode names, so the alert modes are the only thing that narrows
  * this. Says nothing about what an alert is: the Alert rows own that.
  */
+/**
+ * Whether the message should alert, and through `matched` whether it did so by
+ * matching an address the filter names rather than by nothing narrowing it -
+ * which is what decides between the two pairs of alert rows.
+ */
 bool pcsg_filter_alerts(
     const PCSGFilterSettings* filter,
-    SubGhzProtocolDecoderBase* decoder_base);
+    SubGhzProtocolDecoderBase* decoder_base,
+    bool* matched);

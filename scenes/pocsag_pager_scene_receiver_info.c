@@ -37,7 +37,9 @@ static void pocsag_pager_scene_receiver_info_add_to_history_callback(
                 notification_message(
                     app->notifications, pcsg_led_blink_sequence(app->filter.decode_led_color));
             }
-            pcsg_classic_alert_request(app);
+            // Reading a message, so no filter decided this one: the default
+            // pair is the only one that applies.
+            pcsg_classic_alert_request(app, app->filter.alert, app->filter.alert_tone);
             app->txrx->rx_key_state = PCSGRxKeyStateAddKey;
         }
     }

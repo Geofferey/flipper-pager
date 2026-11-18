@@ -91,6 +91,9 @@ struct POCSAGPagerApp {
     bool classic_alert_started;
     bool classic_alert_sounding;
     uint8_t classic_alert_remaining;
+    /** Which pair of alert rows the run in progress was asked for with. */
+    PCSGAlert classic_alert_mode;
+    PCSGAlertTone classic_alert_tone;
 
     PocsagTxEncoder* tx_encoder;
     FlexTxEncoder* flex_tx_encoder;
@@ -196,7 +199,7 @@ uint8_t pcsg_zone_code(uint8_t index);
 uint8_t pcsg_zone_index(uint8_t code);
 /** Writes an offset as "UTC-8" or "UTC+5:45". */
 void pcsg_zone_format(int16_t minutes, char* out, size_t size);
-bool pcsg_classic_alert_request(POCSAGPagerApp* app);
+bool pcsg_classic_alert_request(POCSAGPagerApp* app, PCSGAlert alert, PCSGAlertTone tone);
 void pcsg_classic_alert_tick(POCSAGPagerApp* app);
 void pcsg_classic_alert_reset(POCSAGPagerApp* app);
 void pcsg_classic_alert_free(POCSAGPagerApp* app);

@@ -33,8 +33,8 @@ static const NotificationSequence pcsg_sequence_rx_vibro = {
 };
 
 // Message alerts use sound/vibration only; reception never wakes the backlight.
-static const NotificationSequence* pocsag_pager_scene_receiver_alert(POCSAGPagerApp* app) {
-    switch(app->filter.alert) {
+static const NotificationSequence* pocsag_pager_scene_receiver_alert(PCSGAlert alert) {
+    switch(alert) {
     case PCSGAlertSound:
         return &pcsg_sequence_rx_sound;
     case PCSGAlertVibro:
@@ -185,9 +185,14 @@ static void pocsag_pager_scene_receiver_add_to_history_callback(
          * the filters above. The decode LED is not gated by it: that reports
          * decoding, not whether the message was one being waited for.
          */
-        if(pcsg_filter_alerts(&app->filter, decoder_base)) {
-            if(!pcsg_classic_alert_request(app)) {
-                const NotificationSequence* alert = pocsag_pager_scene_receiver_alert(app);
+        bool matched = false;
+        if(pcsg_filter_alerts(&app->filter, decoder_base, &matched)) {
+            // A watched address announces itself with its own pair of rows.
+            const PCSGAlert mode = matched ? app->filter.filter_alert : app->filter.alert;
+            const PCSGAlertTone tone =
+                matched ? app->filter.filter_alert_tone : app->filter.alert_tone;
+            if(!pcsg_classic_alert_request(app, mode, tone)) {
+                const NotificationSequence* alert = pocsag_pager_scene_receiver_alert(mode);
                 if(alert) notification_message(app->notifications, alert);
             }
         }

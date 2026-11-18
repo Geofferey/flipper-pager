@@ -27,6 +27,8 @@ enum PCSGFilterIndex {
     PCSGFilterIndexFrameFilter,
     PCSGFilterIndexFrameMin,
     PCSGFilterIndexFrameMax,
+    PCSGFilterIndexFilterAlert,
+    PCSGFilterIndexFilterTone,
 };
 
 #define HIDE_SHOW_COUNT 2
@@ -71,11 +73,27 @@ typedef enum {
     PCSGFilterRowBoolInv, // the row shows "Show", the field holds "hidden"
 } PCSGFilterRowKind;
 
+// Mirrors of the Alerting rows, for a message that alerted by matching a
+// watched address rather than by nothing narrowing it.
+static const char* const filter_alert_text[PCSGAlertCount] = {
+    "Both",
+    "Sound",
+    "Vibro",
+    "Off",
+};
+
+static const char* const filter_tone_text[PCSGAlertToneCount] = {
+    "Default",
+    "Classic",
+};
+
 typedef enum {
     PCSGFilterSideNone,
     PCSGFilterSideCapcodeMax,
     PCSGFilterSideRicMax,
     PCSGFilterSideFrameMax,
+    // The classic alert holds state across a change, as in Alerting.
+    PCSGFilterSideAlertReset,
 } PCSGFilterRowSide;
 
 typedef struct {
@@ -139,6 +157,17 @@ static const PCSGFilterRow pcsg_filter_rows[] = {
          PCSG_FRAME_FILTER_COUNT, PCSGFilterRowEnum, PCSGFilterSideFrameMax},
     [PCSGFilterIndexFrameMin] = {"Frame:", NULL, 0, 0, PCSGFilterRowNone, PCSGFilterSideNone},
     [PCSGFilterIndexFrameMax] = {"Frame Max:", NULL, 0, 0, PCSGFilterRowNone, PCSGFilterSideNone},
+    /*
+     * How a message that matched one of the Alert modes above announces
+     * itself. The Alerting rows still speak for everything else, including
+     * every message when no filter is in an alert mode at all.
+     */
+    [PCSGFilterIndexFilterAlert] =
+        {"Filter Alert:", filter_alert_text, PCSG_FILTER_ROW(filter.filter_alert), PCSGAlertCount,
+         PCSGFilterRowEnum, PCSGFilterSideAlertReset},
+    [PCSGFilterIndexFilterTone] =
+        {"Filter Tone:", filter_tone_text, PCSG_FILTER_ROW(filter.filter_alert_tone),
+         PCSGAlertToneCount, PCSGFilterRowEnum, PCSGFilterSideAlertReset},
 };
 
 /*
@@ -234,6 +263,9 @@ static void pcsg_filter_row_changed(VariableItem* item) {
         break;
     case PCSGFilterSideFrameMax:
         pcsg_filter_update_frame_max(app);
+        break;
+    case PCSGFilterSideAlertReset:
+        pcsg_classic_alert_reset(app);
         break;
     default:
         break;

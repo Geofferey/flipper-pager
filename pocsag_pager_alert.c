@@ -26,14 +26,26 @@ static const NotificationSequence pcsg_classic_beep_vibro = {
     NULL,
 };
 
+static bool pcsg_classic_alert_wants(PCSGAlert alert, PCSGAlertTone tone) {
+    return tone == PCSGAlertToneClassic &&
+           (alert == PCSGAlertSound || alert == PCSGAlertBoth);
+}
+
+/*
+ * The beeps outlive the message that asked for them, and which pair of alert
+ * rows was in force is a property of that message, so it is kept rather than
+ * read again on each step. Changing either pair resets playback, so a run
+ * cannot outlast the setting it started under.
+ */
 static bool pcsg_classic_alert_enabled(const POCSAGPagerApp* app) {
-    return app->filter.alert_tone == PCSGAlertToneClassic &&
-           (app->filter.alert == PCSGAlertSound || app->filter.alert == PCSGAlertBoth);
+    return pcsg_classic_alert_wants(app->classic_alert_mode, app->classic_alert_tone);
 }
 
 // Receive callbacks only set a flag; playback runs on the UI event loop.
-bool pcsg_classic_alert_request(POCSAGPagerApp* app) {
-    if(!pcsg_classic_alert_enabled(app)) return false;
+bool pcsg_classic_alert_request(POCSAGPagerApp* app, PCSGAlert alert, PCSGAlertTone tone) {
+    if(!pcsg_classic_alert_wants(alert, tone)) return false;
+    app->classic_alert_mode = alert;
+    app->classic_alert_tone = tone;
     atomic_store(&app->classic_alert_pending, true);
     return true;
 }
@@ -73,7 +85,7 @@ static void pcsg_classic_alert_step(void* context) {
                 app->classic_alert_timer, furi_ms_to_ticks(PCSG_CLASSIC_ALERT_OFF_MS));
         }
     } else {
-        const bool vibrate = app->filter.alert == PCSGAlertBoth &&
+        const bool vibrate = app->classic_alert_mode == PCSGAlertBoth &&
                              app->classic_alert_remaining == PCSG_CLASSIC_ALERT_BEEPS;
         const NotificationSequence* sequence = &pcsg_classic_beep;
         if(vibrate) sequence = &pcsg_classic_beep_vibro;
