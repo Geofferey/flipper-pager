@@ -8,10 +8,10 @@
 enum PCSGSettingIndex {
     PCSGSettingIndexFrequency,
     PCSGSettingIndexModulation,
+    PCSGSettingIndexAutoReceive,
     PCSGSettingIndexFilter,
     PCSGSettingIndexAlerting,
     PCSGSettingIndexLogging,
-    PCSGSettingIndexAutoReceive,
     PCSGSettingIndexTimeSync,
     PCSGSettingIndexDst,
     PCSGSettingIndexFreqCorr,
@@ -212,7 +212,7 @@ static const PCSGConfigRow pcsg_config_rows[] = {
          PCSGSideNone},
     // Receiving begins as the app opens, the menu going by unseen.
     [PCSGSettingIndexAutoReceive] =
-        {"Auto receive:", auto_receive_text, PCSG_ROW(filter.auto_receive), AUTO_RECEIVE_COUNT,
+        {"Auto RX:", auto_receive_text, PCSG_ROW(filter.auto_receive), AUTO_RECEIVE_COUNT,
          PCSGRowBool, PCSGSideNone},
     [PCSGSettingIndexTimeSync] =
         {"Time sync:", time_sync_text, PCSG_ROW(filter.time_sync), PCSGTimeSyncCount,
@@ -337,6 +337,8 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_text(
         item, subghz_setting_get_preset_name(app->setting, value_index));
 
+    pcsg_config_row_add(app, PCSGSettingIndexAutoReceive);
+
     // What reaches the message list, behind a door of its own: page kinds,
     // duplicates, capcode/RIC/frame ranges and the phase.
     item = variable_item_list_add(
@@ -359,7 +361,6 @@ void pocsag_pager_scene_receiver_config_on_enter(void* context) {
     variable_item_set_current_value_text(item, "");
 
     pcsg_config_row_add(app, PCSGSettingIndexLogging);
-    pcsg_config_row_add(app, PCSGSettingIndexAutoReceive);
     pcsg_config_row_add(app, PCSGSettingIndexTimeSync);
     pcsg_config_row_add(app, PCSGSettingIndexDst);
 

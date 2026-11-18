@@ -143,7 +143,7 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   defaults to Off. This is intended for licensed operators testing their own
   pager infrastructure; the app does not bypass firmware region restrictions.
 - **Settings** is the same configuration, available before receiving: frequency,
-  modulation, logging, auto receive, FLEX time sync and DST, the frequency
+  modulation, `Auto RX`, logging, FLEX time sync and DST, the frequency
   correction, the debug rows, and three doors into groups of their own.
   `Filtering` holds everything that decides which messages reach the list -
   per-kind FLEX page visibility, duplicates, encrypted and partial messages, the
@@ -192,7 +192,7 @@ Receiver settings and the transmitter protocol, frequency, address, function,
 baud, polarity, correction and message text are saved on a clean app exit.
 The message is stored in plain text in that file, like the rest of it.
 
-**Auto receive** starts receiving as the app opens instead of waiting at the
+**Auto RX** starts receiving as the app opens instead of waiting at the
 menu. The menu is still behind it, so Back from the receiver reaches it as on
 any other run; it is simply never drawn.
 
