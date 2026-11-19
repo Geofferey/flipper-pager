@@ -241,7 +241,8 @@ static const PCSGSetting pcsg_settings[] = {
     {"TxCountry", PCSG_TX_COUNTRY_MAX, PCSG_FIELD(tx_config.country_code), PCSGSetU32},
     {"TxRoaming", 0, PCSG_FIELD(tx_config.roaming), PCSGSetBool},
     {"TxMsgNumber", PCSG_TX_MSG_NUMBER_AUTO, PCSG_FIELD(tx_config.msg_number), PCSGSetU32},
-    {"TxErsCycles", PCSG_TX_ERS_CYCLES_MAX, PCSG_FIELD(tx_config.ers_cycles), PCSGSetU32},
+    // Default sits one past the cycle max, so the limit has to be that.
+    {"TxErsCycles", PCSG_TX_ERS_CYCLES_AUTO, PCSG_FIELD(tx_config.ers_cycles), PCSGSetU32},
     {"HudDate", PCSGHudSourceCount - 1, PCSG_FIELD(filter.hud_date), PCSGSetU32},
     {"HudHour", PCSGHudHourCount - 1, PCSG_FIELD(filter.hud_hour), PCSGSetU32},
     {"HudMinute", PCSGHudSourceCount - 1, PCSG_FIELD(filter.hud_minute), PCSGSetU32},

@@ -33,7 +33,8 @@ const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT] = {"Off", "Time", "Dat
 // Indexed by PagerTxPhaseMode.
 static const char* const tx_phase_text[PagerTxPhaseCount] = {"CAP", "Group"};
 
-#define PCSG_TX_PARAMS_ERS_COUNT (PCSG_TX_ERS_CYCLES_MAX / PCSG_TX_ERS_CYCLES_STEP + 1U)
+// Default, then the durations from 0.00 s up: one entry per step, plus Default.
+#define PCSG_TX_PARAMS_ERS_COUNT (PCSG_TX_ERS_CYCLES_MAX / PCSG_TX_ERS_CYCLES_STEP + 2U)
 
 static void pocsag_pager_scene_tx_params_show_toggle(VariableItem* item, bool value) {
     const uint8_t index = value ? 1U : 0U;
@@ -165,22 +166,22 @@ static void pocsag_pager_scene_tx_params_set_clock(VariableItem* item) {
 
 /*
  * Each cycle is 96 bits at 1600 baud, so 60 ms of lead-in apiece, and the row
- * reads as the duration rather than the count. Default is the first entry
- * because the two modes lead in at different lengths there: 1.44 s of ERS
- * ahead of a page, the captured 100 ms of square wave ahead of a beacon. Any
- * other value is that duration whichever mode is sending.
+ * reads as the duration rather than the count. Default is the first entry and
+ * sends the 1.44 s the app has always sent; the rest are durations from 0.00 s
+ * up, 0.00 s being no lead-in at all.
  */
 static void pocsag_pager_scene_tx_params_show_ers(POCSAGPagerApp* app) {
     VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxParamsErs);
     if(!item) return;
     uint8_t cycles = app->tx_config.ers_cycles;
-    if(cycles > PCSG_TX_ERS_CYCLES_MAX) cycles = 0U;
+    if(cycles > PCSG_TX_ERS_CYCLES_MAX) cycles = PCSG_TX_ERS_CYCLES_AUTO;
     app->tx_config.ers_cycles = cycles;
-    variable_item_set_current_value_index(item, cycles / PCSG_TX_ERS_CYCLES_STEP);
-    if(cycles == 0U) {
+    if(cycles == PCSG_TX_ERS_CYCLES_AUTO) {
+        variable_item_set_current_value_index(item, 0);
         variable_item_set_current_value_text(item, "Default");
         return;
     }
+    variable_item_set_current_value_index(item, cycles / PCSG_TX_ERS_CYCLES_STEP + 1U);
     char text[16];
     const uint16_t ms = (uint16_t)cycles * 60U;
     snprintf(text, sizeof(text), "%u.%02us", ms / 1000U, (ms % 1000U) / 10U);
@@ -263,8 +264,10 @@ static void pocsag_pager_scene_tx_params_set_msg_number(VariableItem* item) {
 
 static void pocsag_pager_scene_tx_params_set_ers(VariableItem* item) {
     POCSAGPagerApp* app = variable_item_get_context(item);
+    const uint8_t index = variable_item_get_current_value_index(item);
     app->tx_config.ers_cycles =
-        (uint8_t)(variable_item_get_current_value_index(item) * PCSG_TX_ERS_CYCLES_STEP);
+        index == 0U ? PCSG_TX_ERS_CYCLES_AUTO :
+                      (uint8_t)((index - 1U) * PCSG_TX_ERS_CYCLES_STEP);
     pocsag_pager_scene_tx_params_show_ers(app);
 }
 

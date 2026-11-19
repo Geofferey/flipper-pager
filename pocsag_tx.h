@@ -52,15 +52,16 @@ extern const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT];
 #define PCSG_TX_MSG_NUMBER_AUTO 64U
 
 /*
- * Lead-in ahead of a transmission, in 12-byte cycles. Each is 60 ms at 1600
- * baud. Zero is the Default row entry, which leaves each mode at the length it
- * was measured or chosen at - PCSG_TX_ERS_CYCLES_DEFAULT of the ERS code ahead
- * of a page, and the captured square-wave preamble ahead of a beacon - while
- * any other value is that duration whichever mode is sending.
+ * Lead-in ahead of a transmission, in 12-byte cycles of the ERS code. Each is
+ * 60 ms at 1600 baud, and every burst leads in the same way whatever it
+ * carries. One past the top is the Default row entry, which sends
+ * PCSG_TX_ERS_CYCLES_DEFAULT of them; zero is a count like any other and
+ * sends none, starting the frame at the carrier.
  */
 #define PCSG_TX_ERS_CYCLES_MAX     48U
 #define PCSG_TX_ERS_CYCLES_DEFAULT 24U
 #define PCSG_TX_ERS_CYCLES_STEP    4U
+#define PCSG_TX_ERS_CYCLES_AUTO    (PCSG_TX_ERS_CYCLES_MAX + 1U)
 
 /** Body of a Sequence page; the counter is four digits, so it wraps at 9999. */
 #define PCSG_TX_SEQUENCE_FORMAT "THIS IS A TEST PERIODIC PAGE SEQUENTIAL NUMBER %04u"
