@@ -63,6 +63,20 @@ extern const char* const pcsg_tx_clock_text[PCSG_TX_CLOCK_COUNT];
 #define PCSG_TX_ERS_CYCLES_STEP    4U
 #define PCSG_TX_ERS_CYCLES_AUTO    (PCSG_TX_ERS_CYCLES_MAX + 1U)
 
+/*
+ * Blocks of idle fill kept after the ones the page occupies. A frame is 11
+ * blocks of 160 ms whatever it carries, so a short page leaves most of it
+ * filled with the interleaver's idle pattern - a steady 800 Hz tone, over a
+ * second of it, running into a tail of the same frequency. A live network does
+ * not send that: the rest of the frame is other subscribers' traffic. Nothing
+ * here can fill it with traffic, so the choice is how much of it to send, and
+ * ending the frame early is what gets a mass page off the air in time for the
+ * next one. One past the top is Full, the whole 11 blocks a frame is defined
+ * as; zero ends the frame on the last block carrying the page.
+ */
+#define PCSG_TX_IDLE_BLOCKS_MAX  10U
+#define PCSG_TX_IDLE_BLOCKS_AUTO (PCSG_TX_IDLE_BLOCKS_MAX + 1U)
+
 /** Body of a Sequence page; the counter is four digits, so it wraps at 9999. */
 #define PCSG_TX_SEQUENCE_FORMAT "THIS IS A TEST PERIODIC PAGE SEQUENTIAL NUMBER %04u"
 #define PCSG_TX_SEQUENCE_MAX    9999U
@@ -156,6 +170,8 @@ typedef struct {
     uint8_t msg_number;
     /** FLEX only: acquisition cycles ahead of a page. */
     uint8_t ers_cycles;
+    /** FLEX only: idle blocks kept after the page, or PCSG_TX_IDLE_BLOCKS_AUTO. */
+    uint8_t idle_blocks;
     /** Which body to send. Not saved. */
     PagerTxMessageMode message_mode;
     /** Sequence mode: the number this page carries. Not saved. */

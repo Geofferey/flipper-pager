@@ -214,16 +214,25 @@ static void pcsg_serial_status(PCSGSerial* serial) {
     DateTime now;
     furi_hal_rtc_get_datetime(&now);
     static const char* const modes[] = {"1600/2", "3200/2", "3200/4", "6400/4"};
+    char idle[12];
+    if(config->idle_blocks > PCSG_TX_IDLE_BLOCKS_MAX) {
+        strlcpy(idle, "FULL", sizeof(idle));
+    } else if(config->idle_blocks == 0U) {
+        strlcpy(idle, "AUTO", sizeof(idle));
+    } else {
+        snprintf(idle, sizeof(idle), "%u", config->idle_blocks);
+    }
     pcsg_serial_printf(
         serial,
-        "+STATUS: freq=%lu mode=%s phase=%s clock=%u zone=%u dst=%u extsec=%u\r\n",
+        "+STATUS: freq=%lu mode=%s phase=%s clock=%u zone=%u dst=%u extsec=%u idle=%s\r\n",
         (unsigned long)config->frequency,
         modes[pcsg_serial_mode_index(config)],
         config->phase_mode == PagerTxPhaseCap ? "CAP" : "GROUP",
         config->clock_biws,
         config->utc_code,
         config->dst ? 1U : 0U,
-        config->ext_sec);
+        config->ext_sec,
+        idle);
     if(config->per_phase_text) {
         static const char phase[4] = {'A', 'B', 'C', 'D'};
         for(size_t i = 0; i < 4U; i++) {
@@ -394,6 +403,25 @@ static void pcsg_serial_execute(PCSGSerial* serial, char* line) {
             return;
         }
         config->dst = value != 0U;
+    } else if(pcsg_serial_is(rest, "IDLE")) {
+        /*
+         * Blocks of idle fill behind the page, FULL for the whole frame. This
+         * is the one that decides how soon the next page can go out: a frame
+         * is 11 blocks of 160 ms whatever it carries, and the ones a short
+         * page does not fill are a held tone the air could be carrying the
+         * next transmission in.
+         */
+        if(pcsg_serial_is(first, "FULL")) {
+            config->idle_blocks = PCSG_TX_IDLE_BLOCKS_AUTO;
+        } else if(pcsg_serial_is(first, "AUTO")) {
+            // The blocks the page needs and no more, worked out per frame.
+            config->idle_blocks = 0U;
+        } else if(pcsg_serial_number(first, &value, PCSG_TX_IDLE_BLOCKS_MAX)) {
+            config->idle_blocks = (uint8_t)value;
+        } else {
+            pcsg_serial_err(serial, 3, "idle AUTO, FULL or 0..10");
+            return;
+        }
     } else if(pcsg_serial_is(rest, "EXTSEC")) {
         if(!pcsg_serial_number(first, &value, PCSG_TX_EXT_SEC_MAX)) {
             pcsg_serial_err(serial, 3, "extsec out of range");

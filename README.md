@@ -116,14 +116,37 @@ modules must expose GDO1 on MISO, as standard CC1101 modules do.
   header: `Auto` derives it from the clock as before, and a fixed 0-63 is sent
   as set and counted on once the page has gone out.
 
-  `ERS` is the lead-in duration ahead of a transmission, 0.24 s to 2.88 s in
-  steps of 60 ms. The two modes lead in differently: a page with the ERS code,
-  a beacon with the 37.5 Hz square wave captured from the network. `Default`
-  leaves each at the length it was measured or chosen at - 1.44 s of ERS ahead
-  of a page, 100 ms of square wave ahead of a beacon or Bcn+Seq - and any other
-  value is that duration whichever mode is sending. A scaled beacon preamble is
-  anchored at its end, so however long it runs it meets sync 1 on the same
-  phase of the square wave the capture does.
+  `ERS` is the lead-in duration ahead of a transmission: that many cycles of
+  the ERS code, 60 ms each, whatever the burst carries, so a beacon leads in
+  exactly as a page does. `Default` sends the 1.44 s it always has, `0.00s`
+  sends none and starts the frame at the carrier, and the row steps 0.24 s at a
+  time between.
+
+  `Idle` is how much of the frame goes out behind the page. A frame is 11
+  blocks of 160 ms however short the page is, and the blocks it does not fill
+  carry the interleaver's idle pattern, which on the air is a held 800 Hz tone
+  running straight into a tail of the same frequency - well over a second of it
+  after a short page. A live network does not send that, because the rest of
+  the frame is other subscribers' traffic; a single-subscriber transmitter has
+  nothing to put there.
+
+  `Full` sends all 11 blocks, as the framing defines a frame, and is the
+  default. `Auto` sends only the blocks the page needs: the frame knows where
+  its own block information, address, vector and message fields end, so it
+  stops on the block that finishes them and no number has to be picked. That is
+  the shortest a frame can be and still carry the page, and it is a departure
+  from the framing - the spec has no shorter frame, because a frame is a time
+  slot rather than a length. The counts above `Auto` keep that many blocks of
+  fill on top of it.
+
+  Every frame of a transmission is trimmed, not just the last. A 240-character
+  message is sent as three fragments, each filling a few blocks of its own
+  frame, so trimming only the last would leave over a second of fill inside
+  each of the two before it. A beacon's frames trim as well, down to the clock
+  words alone, which means a trimmed beacon no longer holds its slot on the
+  grid - the row departing from the framing, as it says it does. Frames of a
+  burst can end on different blocks, so the transmitter records what each one
+  occupies instead of assuming they are all the same length.
 
   BIW1 carries the address offset in two bits, so at most **three** block
   information words fit ahead of the address. With three or fewer enabled they
@@ -591,6 +614,7 @@ modem - `+READY: flextx 1` is sent when the link comes up.
 | `AT+POL=NORM\|INV` | polarity |
 | `AT+CLOCK=<0..3>` | which clock words: off, time, date, both |
 | `AT+ZONE=<0..31>` `AT+DST=<0\|1>` `AT+EXTSEC=<0..7>` | the system message word |
+| `AT+IDLE=AUTO\|FULL\|<1..10>` | idle fill behind the page. `AUTO` sends only the blocks the page needs, worked out per frame; `FULL` sends the whole 11-block frame; a count keeps that many blocks of fill on top of `AUTO`. `AUTO` is what gets one page off the air in time for the next |
 | `AT+SSID1=<localid>,<coverage>` `AT+SSID2=<country>` `AT+ROAM=<0\|1>` | identity |
 | `AT+TIME=YYYY-MM-DDThh:mm:ss` | sets the Flipper's clock, which is what the time and date words carry |
 | `AT+CAP=<c0>[,c1,c2,c3]` | up to four capcodes, one per phase; the rest are cleared |

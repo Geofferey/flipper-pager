@@ -22,6 +22,7 @@ typedef enum {
     PCSGTxParamsRoaming,
     PCSGTxParamsMsgNumber,
     PCSGTxParamsErs,
+    PCSGTxParamsIdle,
 } PCSGTxParamsIndex;
 
 // Also serves DST, where Off is standard time, the bit set, and On daylight.
@@ -35,6 +36,8 @@ static const char* const tx_phase_text[PagerTxPhaseCount] = {"CAP", "Group"};
 
 // Default, then the durations from 0.00 s up: one entry per step, plus Default.
 #define PCSG_TX_PARAMS_ERS_COUNT (PCSG_TX_ERS_CYCLES_MAX / PCSG_TX_ERS_CYCLES_STEP + 2U)
+// Full, then a block count: 0 up to the maximum, one entry each.
+#define PCSG_TX_PARAMS_IDLE_COUNT (PCSG_TX_IDLE_BLOCKS_MAX + 2U)
 
 static void pocsag_pager_scene_tx_params_show_toggle(VariableItem* item, bool value) {
     const uint8_t index = value ? 1U : 0U;
@@ -188,6 +191,40 @@ static void pocsag_pager_scene_tx_params_show_ers(POCSAGPagerApp* app) {
     variable_item_set_current_value_text(item, text);
 }
 
+/*
+ * How much of the frame goes out behind the page. A frame is 11 blocks of
+ * 160 ms however short the page is, and the blocks it does not fill carry the
+ * idle pattern, which on the air is a held 800 Hz tone.
+ *
+ * `Full` sends all 11, as the framing defines a frame. `Auto` sends only the
+ * blocks the page needs, which the frame works out from where its own address,
+ * vector and message fields end - no number to pick, and the shortest a frame
+ * can be and still carry the page. The counts above it keep that many blocks
+ * of fill on top, for a receiver that wants more to chew on.
+ */
+static void pocsag_pager_scene_tx_params_show_idle(POCSAGPagerApp* app) {
+    VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxParamsIdle);
+    if(!item) return;
+    uint8_t blocks = app->tx_config.idle_blocks;
+    if(blocks > PCSG_TX_IDLE_BLOCKS_MAX) blocks = PCSG_TX_IDLE_BLOCKS_AUTO;
+    app->tx_config.idle_blocks = blocks;
+    if(blocks == PCSG_TX_IDLE_BLOCKS_AUTO) {
+        variable_item_set_current_value_index(item, 0);
+        variable_item_set_current_value_text(item, "Full");
+        return;
+    }
+    variable_item_set_current_value_index(item, blocks + 1U);
+    if(blocks == 0U) {
+        // Nothing kept past the page, so the length is worked out from the
+        // field layout rather than asked for: Auto says so.
+        variable_item_set_current_value_text(item, "Auto");
+        return;
+    }
+    char text[16];
+    snprintf(text, sizeof(text), "+%u blk", blocks);
+    variable_item_set_current_value_text(item, text);
+}
+
 static void pocsag_pager_scene_tx_params_show_msg_number(POCSAGPagerApp* app) {
     VariableItem* item = variable_item_list_get(app->variable_item_list, PCSGTxParamsMsgNumber);
     if(!item) return;
@@ -269,6 +306,14 @@ static void pocsag_pager_scene_tx_params_set_ers(VariableItem* item) {
         index == 0U ? PCSG_TX_ERS_CYCLES_AUTO :
                       (uint8_t)((index - 1U) * PCSG_TX_ERS_CYCLES_STEP);
     pocsag_pager_scene_tx_params_show_ers(app);
+}
+
+static void pocsag_pager_scene_tx_params_set_idle(VariableItem* item) {
+    POCSAGPagerApp* app = variable_item_get_context(item);
+    const uint8_t index = variable_item_get_current_value_index(item);
+    app->tx_config.idle_blocks =
+        index == 0U ? PCSG_TX_IDLE_BLOCKS_AUTO : (uint8_t)(index - 1U);
+    pocsag_pager_scene_tx_params_show_idle(app);
 }
 
 static void pocsag_pager_scene_tx_params_enter_callback(void* context, uint32_t index) {
@@ -379,6 +424,14 @@ void pocsag_pager_scene_tx_params_on_enter(void* context) {
         pocsag_pager_scene_tx_params_set_ers,
         app);
     pocsag_pager_scene_tx_params_show_ers(app);
+
+    variable_item_list_add(
+        app->variable_item_list,
+        "Idle:",
+        PCSG_TX_PARAMS_IDLE_COUNT,
+        pocsag_pager_scene_tx_params_set_idle,
+        app);
+    pocsag_pager_scene_tx_params_show_idle(app);
 
     variable_item_list_set_enter_callback(
         app->variable_item_list, pocsag_pager_scene_tx_params_enter_callback, app);

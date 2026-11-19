@@ -159,11 +159,6 @@ uint8_t flex_tx_mode_phases(const PocsagTxConfig* config, uint8_t order[4]) {
     return mode.phases;
 }
 
-static uint16_t flex_tx_frame_bytes(const FlexTxMode* mode) {
-    return (uint16_t)(FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * mode->sync2_copies +
-                      11U * mode->block_bytes);
-}
-
 // The largest a frame gets, which is what the buffer has to hold: 6400/4.
 #define FLEX_TX_MAX_FRAME_BYTES \
     (FLEX_TX_HEAD_BYTES + FLEX_TX_SYNC2_BYTES * 4U + 11U * 128U)
@@ -214,7 +209,13 @@ struct FlexTxEncoder {
     // Half cycles of the tone tail already emitted.
     uint16_t tail_index;
     FlexTxMode mode;
-    uint16_t frame_bytes;
+    /*
+     * What each frame of the burst actually occupies. Not one length for all
+     * of them: the Idle row ends a frame on the block that finishes the page,
+     * and consecutive fragments need not finish on the same one, so where the
+     * rate changes has to be looked up rather than stepped by a fixed stride.
+     */
+    uint16_t frame_len[FLEX_TX_MAX_FRAGMENTS];
     // Built here rather than on the stack: four phases of 88 words is 1.4 kB,
     // and the writer needs all of them at once.
     uint32_t phase_words[4][FLEX_TX_PHASE_WORDS];
@@ -596,6 +597,14 @@ typedef struct {
     // Sync and the clock, addressing nobody. A burst can mix idle frames with
     // a page, so it is a property of the frame rather than of the mode.
     bool idle;
+    /*
+     * Idle blocks to keep after the ones the page fills, or
+     * PCSG_TX_IDLE_BLOCKS_AUTO for all 11 a frame is defined as. Per frame
+     * because only the last one in a burst can end early: the frames before it
+     * have to be their full length or the ones after would start somewhere the
+     * rate changes are not expecting.
+     */
+    uint8_t idle_blocks;
 } FlexTxFrameSpec;
 
 // Steps to the next frame, carrying into the cycle and the hour.
@@ -775,6 +784,9 @@ static bool flex_tx_write_frame(
     const uint8_t biw_count = flex_tx_biw_words(config, spec, biw_words);
 
     const uint8_t address_start = (uint8_t)(1U + biw_count);
+    // One past the last word any phase writes, so the frame can stop on the
+    // block that holds it. BIW1 and the clock words are always there.
+    uint8_t words_used = (uint8_t)(1U + biw_count);
     for(uint8_t p = 0; p < mode.phases; p++) {
         const uint8_t index = mode.order[p];
         const uint32_t capcode = config->ric[index];
@@ -835,9 +847,24 @@ static bool flex_tx_write_frame(
         for(uint8_t i = first; i < message_word_count; i++) {
             phase_words[index][message_start + i - first] = message_words[i];
         }
+        // Tone-only writes no message words, but message_start is already past
+        // the vector slots it does write, so this covers both.
+        const uint8_t top = (uint8_t)(message_start + (message_word_count - first));
+        if(top > words_used) words_used = top;
     }
 
-    for(uint8_t block = 0; block < 11U; block++) {
+    /*
+     * Eight words per phase to a block, so the page occupies the first few and
+     * the rest would go out as idle. Keeping fewer of them ends the frame
+     * early: short of the 11 blocks a frame is defined as, which is a
+     * departure from the framing, and the point of the row that asks for it.
+     */
+    uint8_t blocks = 11U;
+    if(spec->idle_blocks <= PCSG_TX_IDLE_BLOCKS_MAX) {
+        const uint16_t want = (uint16_t)((words_used + 7U) / 8U) + spec->idle_blocks;
+        blocks = want < 11U ? (uint8_t)want : 11U;
+    }
+    for(uint8_t block = 0; block < blocks; block++) {
         flex_tx_write_block(output, phase_words, block, &mode);
     }
     return true;
@@ -949,6 +976,16 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
     encoder->frame_base = lead_bytes;
     for(uint8_t i = 0; i < frames; i++) {
         spec.idle = beacon && i != page_frame;
+        /*
+         * Every frame of the burst, not just the last. A fragmented message
+         * fills a few blocks of each of its frames and leaves the rest idle,
+         * so trimming only the last would leave a second of fill inside every
+         * frame before it - which is the whole of what this row is for. An
+         * idle frame trims to its clock words alone, so a beacon asked to trim
+         * stops holding its slot: that is the row departing from the framing,
+         * as it says it does.
+         */
+        spec.idle_blocks = config->idle_blocks;
         // A beacon's page is a whole message in one frame, so it reads from
         // the start of the text wherever in the burst that frame sits.
         const uint8_t part = beacon ? 0U : i;
@@ -958,7 +995,11 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
         spec.continuation = !beacon && (uint8_t)(part + 1U) < frames;
         spec.text = config->message + offset;
         spec.length = remaining < FLEX_TX_FRAGMENT_CHARS ? remaining : FLEX_TX_FRAGMENT_CHARS;
+        // Measured rather than computed: the frame decides its own length once
+        // it knows which block finishes the page.
+        const uint8_t* frame_start = output;
         if(!flex_tx_write_frame(&output, encoder, config, &spec, true)) return false;
+        encoder->frame_len[i] = (uint16_t)(output - frame_start);
         flex_tx_clock_advance(&spec);
     }
     // The tail is a tone, not bits, so it is emitted by the yield.
@@ -969,7 +1010,6 @@ bool flex_tx_encoder_prepare(FlexTxEncoder* encoder, const PocsagTxConfig* confi
 
     encoder->bit_index = 0;
     encoder->mode = flex_tx_mode(config);
-    encoder->frame_bytes = flex_tx_frame_bytes(&encoder->mode);
     encoder->half_us_remainder = 0U;
     encoder->inverted = config->inverted;
     // The async timer starts high and drops a leading low run, which would
@@ -988,15 +1028,20 @@ static bool flex_tx_wire_bit(const FlexTxEncoder* encoder, size_t bit_index) {
     return (encoder->bytes[bit_index / 8U] >> (7U - (bit_index % 8U))) & 1U;
 }
 
-// Frames are a fixed size, so where a bit sits in one decides its rate. The
-// tail is slow again: the decoder is back to hunting sync by then.
+// Where a bit sits in its frame decides its rate: sync1 and the FIW are slow
+// whatever the mode, the blocks after them are not. Frames are walked rather
+// than divided through, because the Idle row can leave them unequal.
 static bool flex_tx_bit_is_payload(const FlexTxEncoder* encoder, size_t bit_index) {
     const size_t byte = bit_index / 8U;
     if(byte < encoder->frame_base) return false;
-    const size_t into_frames = byte - encoder->frame_base;
+    size_t into = byte - encoder->frame_base;
+    for(uint8_t frame = 0; frame < encoder->frames; frame++) {
+        const uint16_t length = encoder->frame_len[frame];
+        if(into < length) return into >= FLEX_TX_HEAD_BYTES;
+        into -= length;
+    }
     // Past the last frame is the flush tail, which is slow again.
-    if(into_frames >= (size_t)encoder->frames * encoder->frame_bytes) return false;
-    return (into_frames % encoder->frame_bytes) >= FLEX_TX_HEAD_BYTES;
+    return false;
 }
 
 static bool flex_tx_bit_is_fast(const FlexTxEncoder* encoder, size_t bit_index) {

@@ -336,6 +336,7 @@ static POCSAGPagerApp* pocsag_pager_app_alloc() {
     // Default: 1.44 s of ERS ahead of a page, the captured 100 ms ahead of a
     // beacon. A set value overrides both.
     app->tx_config.ers_cycles = PCSG_TX_ERS_CYCLES_AUTO;
+    app->tx_config.idle_blocks = PCSG_TX_IDLE_BLOCKS_AUTO;
     app->filter.frequency_correction_hz = 0;
     // The network's clock is what the HUD is for, so that is where it starts;
     // the hour falls back to the Flipper rather than reading "--" while it
